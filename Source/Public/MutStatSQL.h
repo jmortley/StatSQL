@@ -101,6 +101,8 @@ protected:
 	FString CachedServerName;
 	int32 CachedTimeLimit;
 	float MatchStartWorldTime;
+	float AccumulatedRoundTime;  // Sum of elapsed time from completed rounds (Elim)
+	float LastRoundStartWorldTime;  // World time when current round started
 	bool bMatchInProgress;
 
 	/** Active flag carries (keyed by carrier StatsID) for per-grab duration tracking */

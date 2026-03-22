@@ -44,6 +44,8 @@ AMutStatSQL::AMutStatSQL(const FObjectInitializer& ObjectInitializer)
 	bMatchInProgress = false;
 	CachedTimeLimit = 0;
 	MatchStartWorldTime = 0.f;
+	AccumulatedRoundTime = 0.f;
+	LastRoundStartWorldTime = 0.f;
 }
 
 // ============================================================
@@ -180,24 +182,23 @@ void AMutStatSQL::BeginPlay()
 
 float AMutStatSQL::GetMatchSeconds() const
 {
-	AUTGameState* GS = GetWorld()->GetGameState<AUTGameState>();
-	if (!GS) return 0.f;
+	float RoundElapsed = 0.f;
 
-	if (GS->TimeLimit > 0)
+	AUTGameState* GS = GetWorld()->GetGameState<AUTGameState>();
+	if (GS && GS->TimeLimit > 0)
 	{
-		// Timed match: elapsed = (TimeLimit * 60) - RemainingTime
-		float Elapsed = (float)(GS->TimeLimit * 60) - (float)GS->GetRemainingTime();
-		return FMath::Max(0.f, Elapsed);
+		// Timed round: elapsed = (TimeLimit * 60) - RemainingTime
+		RoundElapsed = (float)(GS->TimeLimit * 60) - (float)GS->GetRemainingTime();
+		RoundElapsed = FMath::Max(0.f, RoundElapsed);
 	}
-	else
+	else if (MatchStartWorldTime > 0.f)
 	{
-		// No time limit: use world time since match started
-		if (MatchStartWorldTime > 0.f)
-		{
-			return GetWorld()->GetTimeSeconds() - MatchStartWorldTime;
-		}
-		return 0.f;
+		// No time limit: use world time since round started
+		RoundElapsed = GetWorld()->GetTimeSeconds() - MatchStartWorldTime;
 	}
+
+	// Add accumulated time from all previous rounds (Elim/round-based modes)
+	return AccumulatedRoundTime + RoundElapsed;
 }
 
 uint8 AMutStatSQL::GetCurrentPeriod() const
@@ -533,7 +534,9 @@ bool AMutStatSQL::ModifyDamage_Implementation(int32& Damage, FVector& Momentum, 
 
 			if (DamageType)
 			{
-				Entry.DamageType = MapDamageTypeToFeedName(DamageType->GetName());
+				FString RawName = DamageType->GetName();
+				Entry.DamageType = MapDamageTypeToFeedName(RawName);
+				UE_LOG(LogStatSQL, Log, TEXT("DamageType raw=%s mapped=%s dmg=%d"), *RawName, *Entry.DamageType, Damage);
 			}
 
 			DamageLog.Add(Entry);
@@ -562,14 +565,16 @@ FString AMutStatSQL::MapDamageTypeToFeedName(const FString& ClassName)
 	if (ClassName.Contains(TEXT("FlakShard")) || ClassName.Contains(TEXT("FlakShred"))) return TEXT("FlakShard");
 	if (ClassName.Contains(TEXT("FlakShell"))) return TEXT("FlakShell");
 	if (ClassName.Contains(TEXT("Rocket"))) return TEXT("Rocket");
-	if (ClassName.Contains(TEXT("LightningHeadshot")) || ClassName.Contains(TEXT("LightningRifleHeadshot"))) return TEXT("LightningRifleHeadshot");
-	if (ClassName.Contains(TEXT("LightningSecondary")) || ClassName.Contains(TEXT("LightningSec"))) return TEXT("LightningRifleSecondary");
-	if (ClassName.Contains(TEXT("Lightning"))) return TEXT("LightningRiflePrimary");
+	// LG Blueprint reskin: UT+LG_Headshot_C, UT+LG_C, etc.
+	if (ClassName.Contains(TEXT("LG_Headshot")) || ClassName.Contains(TEXT("LightningHeadshot")) || ClassName.Contains(TEXT("LightningRifleHeadshot"))) return TEXT("LightningRifleHeadshot");
+	if (ClassName.Contains(TEXT("LG_Secondary")) || ClassName.Contains(TEXT("LightningSecondary")) || ClassName.Contains(TEXT("LightningSec"))) return TEXT("LightningRifleSecondary");
+	if (ClassName.Contains(TEXT("UT+LG")) || ClassName.Contains(TEXT("Lightning"))) return TEXT("LightningRiflePrimary");
 	if (ClassName.Contains(TEXT("Redeemer"))) return TEXT("Redeemer");
 	if (ClassName.Contains(TEXT("Telefrag"))) return TEXT("Telefrag");
 	if (ClassName.Contains(TEXT("Translocator"))) return TEXT("Translocator");
 
-	// Unknown — return the raw class name (Django will skip it via try/except)
+	// Unknown — log it so we can add the mapping, then return raw class name
+	UE_LOG(LogStatSQL, Warning, TEXT("Unknown damage type: %s"), *ClassName);
 	return ClassName;
 }
 
@@ -730,8 +735,23 @@ void AMutStatSQL::NotifyMatchStateChange_Implementation(FName NewState)
 	if (NewState == MatchState::InProgress)
 	{
 		bMatchInProgress = true;
-		MatchStartWorldTime = GetWorld()->GetTimeSeconds();
-		DamageLog.Empty();
+		float Now = GetWorld()->GetTimeSeconds();
+
+		if (RemoteMatchId.IsEmpty())
+		{
+			// First round — clear everything
+			DamageLog.Empty();
+			Timeline.Empty();
+			AccumulatedRoundTime = 0.f;
+		}
+		else if (LastRoundStartWorldTime > 0.f)
+		{
+			// Subsequent round — accumulate elapsed time from the previous round
+			AccumulatedRoundTime += (Now - LastRoundStartWorldTime);
+		}
+
+		LastRoundStartWorldTime = Now;
+		MatchStartWorldTime = Now;
 
 		AUTGameState* GS = GetWorld()->GetGameState<AUTGameState>();
 		if (GS)
@@ -1437,11 +1457,12 @@ void AMutStatSQL::PostTimeline()
 	auto Json = StatSQLJson::BuildTimeline(RemoteMatchId, Timeline);
 	FString Body = StatSQLJson::Serialize(Json);
 
-	SendPost(TEXT("/json_entry/"), Body, [this](bool bOK, const FString&)
+	FString Endpoint = FString::Printf(TEXT("/timeline_entry/%s/"), *RemoteMatchId);
+	SendPost(Endpoint, Body, [this](bool bOK, const FString&)
 	{
 		if (!bOK)
 		{
-			UE_LOG(LogStatSQL, Warning, TEXT("Timeline submission failed (endpoint may not exist yet)"));
+			UE_LOG(LogStatSQL, Warning, TEXT("Timeline submission failed"));
 		}
 		PostFlagRoutes();
 	});
