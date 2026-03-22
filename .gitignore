@@ -1,0 +1,6 @@
+Intermediate/
+Binaries/
+*.suo
+*.sdf
+*.opensdf
+*.user

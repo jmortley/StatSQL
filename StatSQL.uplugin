@@ -1,0 +1,31 @@
+{
+	"FileVersion": 3,
+
+	"FriendlyName": "StatSQL",
+	"Version": 1,
+	"VersionName": "1.0",
+	"CreatedBy": "phantaci",
+	"CreatedByURL": "https://ut4stats.com",
+	"EngineVersion": "4.15.0",
+	"Description": "C++ stats tracking mutator - POSTs match data to ut4stats.com",
+	"Category": "UnrealTournament.Mutator",
+	"EnabledByDefault": true,
+	"CanContainContent": false,
+
+	"Modules": [
+		{
+			"Name": "StatSQL",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"UnloadingPhase": "PostEngineCleanup",
+			"WhitelistPlatforms": [ "Win32", "Win64", "Linux" ]
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "UnrealTournament",
+			"Enabled": true
+		}
+	]
+
+}
