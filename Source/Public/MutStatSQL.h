@@ -38,6 +38,9 @@ public:
 		TSubclassOf<UDamageType> DamageType) override;
 	virtual void ScoreDamage_Implementation(int32 DamageAmount, AUTPlayerState* Victim,
 		AUTPlayerState* Attacker) override;
+	virtual bool ModifyDamage_Implementation(int32& Damage, FVector& Momentum, APawn* Injured,
+		AController* InstigatedBy, const FHitResult& HitInfo,
+		AActor* DamageCauser, TSubclassOf<UDamageType> DamageType) override;
 	virtual void ScoreObject_Implementation(AUTCarriedObject* GameObject, AUTCharacter* HolderPawn,
 		AUTPlayerState* Holder, FName Reason) override;
 	virtual void NotifyMatchStateChange_Implementation(FName NewState) override;
@@ -85,6 +88,9 @@ protected:
 
 	/** Timestamped match events */
 	TArray<FTimelineEvent> Timeline;
+
+	/** Per-damage-event log for the damage feed */
+	TArray<FDamageLogEntry> DamageLog;
 
 	/** Match ID returned by server on insert_match */
 	FString RemoteMatchId;
@@ -191,9 +197,14 @@ protected:
 	void PostInsertAccuracy();
 	void PostInsertMovement();
 	void PostInsertFlagStats();
+	void PostKillFeed();
+	void PostDamageFeed();
 	void PostTimeline();
 	void PostFlagRoutes();
 	void PostUpdateMatch();
+
+	/** Map a UE4 damage type class name to the short string Django expects */
+	static FString MapDamageTypeToFeedName(const FString& ClassName);
 
 	/** Build game options string for update_match */
 	FString BuildGameOptions() const;

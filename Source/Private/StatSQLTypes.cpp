@@ -401,4 +401,51 @@ TSharedRef<FJsonObject> BuildFlagRoutes(const FString& MatchId, const TMap<FStri
 	return Json;
 }
 
+FString BuildKillFeed(const TArray<FTimelineEvent>& Timeline)
+{
+	TSharedRef<FJsonObject> Root = MakeShareable(new FJsonObject());
+	TArray<TSharedPtr<FJsonValue>> KillArray;
+
+	for (const FTimelineEvent& Event : Timeline)
+	{
+		if (Event.EventType != TEXT("kill") && Event.EventType != TEXT("suicide")) continue;
+
+		TSharedRef<FJsonObject> Kill = MakeShareable(new FJsonObject());
+		Kill->SetStringField(TEXT("killer_id"), Event.ActorID);
+		Kill->SetStringField(TEXT("killed_id"), Event.TargetID);
+		Kill->SetStringField(TEXT("damage_type"), Event.Detail);
+		Kill->SetNumberField(TEXT("time_stamp"), Event.MatchSeconds);
+		Kill->SetStringField(TEXT("killer_name"), Event.KillerName);
+		Kill->SetStringField(TEXT("killed_name"), Event.KilledName);
+		Kill->SetNumberField(TEXT("kill_distance"), Event.KillDistance);
+		Kill->SetStringField(TEXT("killer_team"), Event.KillerTeam);
+		Kill->SetStringField(TEXT("killed_team"), Event.KilledTeam);
+
+		KillArray.Add(MakeShareable(new FJsonValueObject(Kill)));
+	}
+
+	Root->SetArrayField(TEXT("kill_feed_utpugs"), KillArray);
+	return Serialize(Root);
+}
+
+FString BuildDamageFeed(const TArray<FDamageLogEntry>& DamageLog)
+{
+	TSharedRef<FJsonObject> Root = MakeShareable(new FJsonObject());
+	TArray<TSharedPtr<FJsonValue>> DamageArray;
+
+	for (const FDamageLogEntry& Entry : DamageLog)
+	{
+		TSharedRef<FJsonObject> Dmg = MakeShareable(new FJsonObject());
+		Dmg->SetStringField(TEXT("attacker_id"), Entry.AttackerID);
+		Dmg->SetStringField(TEXT("victim_id"), Entry.VictimID);
+		Dmg->SetStringField(TEXT("damage_type"), Entry.DamageType);
+		Dmg->SetNumberField(TEXT("damage_amount"), Entry.DamageAmount);
+
+		DamageArray.Add(MakeShareable(new FJsonValueObject(Dmg)));
+	}
+
+	Root->SetArrayField(TEXT("damage_feed_utpugs"), DamageArray);
+	return Serialize(Root);
+}
+
 } // namespace StatSQLJson

@@ -507,6 +507,72 @@ void AMutStatSQL::ScoreDamage_Implementation(int32 DamageAmount, AUTPlayerState*
 	}
 }
 
+bool AMutStatSQL::ModifyDamage_Implementation(int32& Damage, FVector& Momentum, APawn* Injured,
+	AController* InstigatedBy, const FHitResult& HitInfo,
+	AActor* DamageCauser, TSubclassOf<UDamageType> DamageType)
+{
+	bool bResult = Super::ModifyDamage_Implementation(Damage, Momentum, Injured, InstigatedBy, HitInfo, DamageCauser, DamageType);
+
+	if (!bEnabled || !bMatchInProgress || Damage <= 0) return bResult;
+
+	AUTPlayerState* AttackerPS = GetUTPS(InstigatedBy);
+	AUTCharacter* InjuredChar = Cast<AUTCharacter>(Injured);
+	AUTPlayerState* VictimPS = InjuredChar ? Cast<AUTPlayerState>(InjuredChar->PlayerState) : nullptr;
+
+	if (AttackerPS && VictimPS && AttackerPS != VictimPS)
+	{
+		FString AttackerID = GetStatsID(AttackerPS);
+		FString VictimID = GetStatsID(VictimPS);
+
+		if (!AttackerID.IsEmpty() && !VictimID.IsEmpty())
+		{
+			FDamageLogEntry Entry;
+			Entry.AttackerID = AttackerID;
+			Entry.VictimID = VictimID;
+			Entry.DamageAmount = Damage;
+
+			if (DamageType)
+			{
+				Entry.DamageType = MapDamageTypeToFeedName(DamageType->GetName());
+			}
+
+			DamageLog.Add(Entry);
+		}
+	}
+
+	return bResult;
+}
+
+FString AMutStatSQL::MapDamageTypeToFeedName(const FString& ClassName)
+{
+	// Map UE4 damage type class names to the short strings Django's damage_feed expects
+	// These match what the Blueprint mutator sent
+	if (ClassName.Contains(TEXT("SniperHeadShot"))) return TEXT("SniperHeadshot");
+	if (ClassName.Contains(TEXT("Sniper"))) return TEXT("Sniper");
+	if (ClassName.Contains(TEXT("ShockCombo"))) return TEXT("ShockCombo");
+	if (ClassName.Contains(TEXT("ShockPrimary")) || ClassName.Contains(TEXT("ShockCore"))) return TEXT("ShockCore");
+	if (ClassName.Contains(TEXT("ShockBeam")) || ClassName.Contains(TEXT("ShockSecondary"))) return TEXT("ShockBeam");
+	if (ClassName.Contains(TEXT("ImpactHammer"))) return TEXT("ImpactHammer");
+	if (ClassName.Contains(TEXT("Enforcer"))) return TEXT("Enforcer");
+	if (ClassName.Contains(TEXT("Bio"))) return TEXT("BioRifle");
+	if (ClassName.Contains(TEXT("LinkBeam"))) return TEXT("LinkBeam");
+	if (ClassName.Contains(TEXT("Link"))) return TEXT("Link");
+	if (ClassName.Contains(TEXT("MinigunShard"))) return TEXT("MinigunShard");
+	if (ClassName.Contains(TEXT("Minigun"))) return TEXT("Minigun");
+	if (ClassName.Contains(TEXT("FlakShard")) || ClassName.Contains(TEXT("FlakShred"))) return TEXT("FlakShard");
+	if (ClassName.Contains(TEXT("FlakShell"))) return TEXT("FlakShell");
+	if (ClassName.Contains(TEXT("Rocket"))) return TEXT("Rocket");
+	if (ClassName.Contains(TEXT("LightningHeadshot")) || ClassName.Contains(TEXT("LightningRifleHeadshot"))) return TEXT("LightningRifleHeadshot");
+	if (ClassName.Contains(TEXT("LightningSecondary")) || ClassName.Contains(TEXT("LightningSec"))) return TEXT("LightningRifleSecondary");
+	if (ClassName.Contains(TEXT("Lightning"))) return TEXT("LightningRiflePrimary");
+	if (ClassName.Contains(TEXT("Redeemer"))) return TEXT("Redeemer");
+	if (ClassName.Contains(TEXT("Telefrag"))) return TEXT("Telefrag");
+	if (ClassName.Contains(TEXT("Translocator"))) return TEXT("Translocator");
+
+	// Unknown — return the raw class name (Django will skip it via try/except)
+	return ClassName;
+}
+
 void AMutStatSQL::ScoreObject_Implementation(AUTCarriedObject* GameObject, AUTCharacter* HolderPawn,
 	AUTPlayerState* Holder, FName Reason)
 {
@@ -665,6 +731,7 @@ void AMutStatSQL::NotifyMatchStateChange_Implementation(FName NewState)
 	{
 		bMatchInProgress = true;
 		MatchStartWorldTime = GetWorld()->GetTimeSeconds();
+		DamageLog.Empty();
 
 		AUTGameState* GS = GetWorld()->GetGameState<AUTGameState>();
 		if (GS)
@@ -1032,8 +1099,8 @@ void AMutStatSQL::SubmitMatchData()
 		return;
 	}
 
-	UE_LOG(LogStatSQL, Log, TEXT("Starting match submission chain (%d players, %d timeline events)"),
-		PlayerData.Num(), Timeline.Num());
+	UE_LOG(LogStatSQL, Log, TEXT("Starting match submission chain (%d players, %d timeline events, %d damage events)"),
+		PlayerData.Num(), Timeline.Num(), DamageLog.Num());
 
 	PostInsertMatch();
 }
@@ -1279,8 +1346,8 @@ void AMutStatSQL::PostInsertFlagStats()
 	bool bIsCTF = CachedGameMode.Contains(TEXT("CTF")) || CachedGameMode.Contains(TEXT("FlagRun"));
 	if (!bIsCTF)
 	{
-		// Skip flag stats, go directly to timeline
-		PostTimeline();
+		// Skip flag stats, go to kill feed
+		PostKillFeed();
 		return;
 	}
 
@@ -1298,7 +1365,7 @@ void AMutStatSQL::PostInsertFlagStats()
 	{
 		static void Next(AMutStatSQL* Self, TSharedPtr<int32> Idx, TSharedPtr<TArray<FString>> S)
 		{
-			if (*Idx >= S->Num()) { Self->PostTimeline(); return; }
+			if (*Idx >= S->Num()) { Self->PostKillFeed(); return; }
 			Self->SendPost(TEXT("/flag_entry"), (*S)[*Idx], [Self, Idx, S](bool bOK, const FString&)
 			{
 				if (!bOK) UE_LOG(LogStatSQL, Warning, TEXT("insert_flag_stats failed for player %d"), *Idx);
@@ -1308,6 +1375,55 @@ void AMutStatSQL::PostInsertFlagStats()
 		}
 	};
 	FSubmitter::Next(this, Index, Subs);
+}
+
+void AMutStatSQL::PostKillFeed()
+{
+	// Build kill feed from timeline events
+	bool bHasKills = false;
+	for (const FTimelineEvent& Event : Timeline)
+	{
+		if (Event.EventType == TEXT("kill") || Event.EventType == TEXT("suicide"))
+		{
+			bHasKills = true;
+			break;
+		}
+	}
+
+	if (!bHasKills)
+	{
+		PostDamageFeed();
+		return;
+	}
+
+	FString Body = StatSQLJson::BuildKillFeed(Timeline);
+	FString Endpoint = FString::Printf(TEXT("/kill_feed_utpugs/%s/"), *RemoteMatchId);
+
+	SendPost(Endpoint, Body, [this](bool bOK, const FString&)
+	{
+		if (!bOK) UE_LOG(LogStatSQL, Warning, TEXT("kill_feed submission failed"));
+		PostDamageFeed();
+	});
+}
+
+void AMutStatSQL::PostDamageFeed()
+{
+	if (DamageLog.Num() == 0)
+	{
+		PostTimeline();
+		return;
+	}
+
+	UE_LOG(LogStatSQL, Log, TEXT("Submitting damage feed: %d events"), DamageLog.Num());
+
+	FString Body = StatSQLJson::BuildDamageFeed(DamageLog);
+	FString Endpoint = FString::Printf(TEXT("/damage_feed_utpugs/%s/"), *RemoteMatchId);
+
+	SendPost(Endpoint, Body, [this](bool bOK, const FString&)
+	{
+		if (!bOK) UE_LOG(LogStatSQL, Warning, TEXT("damage_feed submission failed"));
+		PostTimeline();
+	});
 }
 
 void AMutStatSQL::PostTimeline()
@@ -1428,15 +1544,15 @@ FString AMutStatSQL::BuildGameOptions() const
 	if (!GM) return FString();
 
 	FString Options;
-	Options += FString::Printf(TEXT("timelimit=%d"), CachedTimeLimit);
+	Options += FString::Printf(TEXT("TimeLimit=%d"), CachedTimeLimit);
 
 	AUTGameState* GS = GetWorld()->GetGameState<AUTGameState>();
 	if (GS)
 	{
-		Options += FString::Printf(TEXT("?goalscore=%d"), GS->GoalScore);
+		Options += FString::Printf(TEXT("?GoalScore=%d"), GS->GoalScore);
 	}
 
-	Options += FString::Printf(TEXT("?maxplayers=%d"), GM->GetNumPlayers());
+	Options += FString::Printf(TEXT("?MaxPlayers=%d"), GM->GetNumPlayers());
 
 	// Collect active mutator names
 	FString MutatorNames;

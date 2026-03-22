@@ -126,6 +126,15 @@ struct FTimelineEvent
 	FString ConsoleDeathMessage;
 };
 
+// Single damage event for the damage feed
+struct FDamageLogEntry
+{
+	FString AttackerID;
+	FString VictimID;
+	FString DamageType;   // Short name: "SniperHeadshot", "ShockCombo", etc.
+	int32 DamageAmount = 0;
+};
+
 // Aggregated per-player match data
 struct FPlayerMatchData
 {
@@ -200,6 +209,12 @@ namespace StatSQLJson
 
 	// Build JSON for flag carry routes (all players' carry instances)
 	TSharedRef<FJsonObject> BuildFlagRoutes(const FString& MatchId, const TMap<FString, FPlayerMatchData>& PlayerData);
+
+	// Build JSON for kill feed (POST /kill_feed_utpugs/<matchid>/)
+	FString BuildKillFeed(const TArray<FTimelineEvent>& Timeline);
+
+	// Build JSON for damage feed (POST /damage_feed_utpugs/<matchid>/)
+	FString BuildDamageFeed(const TArray<FDamageLogEntry>& DamageLog);
 
 	// Serialize FJsonObject to string
 	FString Serialize(const TSharedRef<FJsonObject>& JsonObj);
