@@ -1110,7 +1110,7 @@ void AMutStatSQL::PostInsertMatch()
 	auto Json = StatSQLJson::BuildInsertMatch(CachedGameMode, CachedMapName, CachedServerName);
 	FString Body = StatSQLJson::Serialize(Json);
 
-	SendPost(TEXT("/json_entry"), Body, [this](bool bOK, const FString& Response)
+	SendPost(TEXT("/json_entry/"), Body, [this](bool bOK, const FString& Response)
 	{
 		if (!bOK)
 		{
@@ -1185,7 +1185,7 @@ void AMutStatSQL::PostInsertPlayers()
 			}
 
 			const FString& Body = (*Subs)[*Idx].Value;
-			Self->SendPost(TEXT("/json_entry"), Body, [Self, Idx, Subs](bool bOK, const FString& Response)
+			Self->SendPost(TEXT("/json_entry/"), Body, [Self, Idx, Subs](bool bOK, const FString& Response)
 			{
 				if (!bOK)
 				{
@@ -1217,7 +1217,7 @@ void AMutStatSQL::PostInsertMatchStats()
 		static void Next(AMutStatSQL* Self, TSharedPtr<int32> Idx, TSharedPtr<TArray<FString>> S)
 		{
 			if (*Idx >= S->Num()) { Self->PostInsertItems(); return; }
-			Self->SendPost(TEXT("/json_entry"), (*S)[*Idx], [Self, Idx, S](bool bOK, const FString&)
+			Self->SendPost(TEXT("/json_entry/"), (*S)[*Idx], [Self, Idx, S](bool bOK, const FString&)
 			{
 				if (!bOK) UE_LOG(LogStatSQL, Warning, TEXT("insert_matchstats failed for player %d"), *Idx);
 				(*Idx)++;
@@ -1245,7 +1245,7 @@ void AMutStatSQL::PostInsertItems()
 		static void Next(AMutStatSQL* Self, TSharedPtr<int32> Idx, TSharedPtr<TArray<FString>> S)
 		{
 			if (*Idx >= S->Num()) { Self->PostInsertWeapons(); return; }
-			Self->SendPost(TEXT("/json_entry"), (*S)[*Idx], [Self, Idx, S](bool bOK, const FString&)
+			Self->SendPost(TEXT("/json_entry/"), (*S)[*Idx], [Self, Idx, S](bool bOK, const FString&)
 			{
 				if (!bOK) UE_LOG(LogStatSQL, Warning, TEXT("insert_item failed for player %d"), *Idx);
 				(*Idx)++;
@@ -1273,7 +1273,7 @@ void AMutStatSQL::PostInsertWeapons()
 		static void Next(AMutStatSQL* Self, TSharedPtr<int32> Idx, TSharedPtr<TArray<FString>> S)
 		{
 			if (*Idx >= S->Num()) { Self->PostInsertAccuracy(); return; }
-			Self->SendPost(TEXT("/weapon_entry"), (*S)[*Idx], [Self, Idx, S](bool bOK, const FString&)
+			Self->SendPost(TEXT("/weapon_entry/"), (*S)[*Idx], [Self, Idx, S](bool bOK, const FString&)
 			{
 				if (!bOK) UE_LOG(LogStatSQL, Warning, TEXT("insert_weapon failed for player %d"), *Idx);
 				(*Idx)++;
@@ -1301,7 +1301,7 @@ void AMutStatSQL::PostInsertAccuracy()
 		static void Next(AMutStatSQL* Self, TSharedPtr<int32> Idx, TSharedPtr<TArray<FString>> S)
 		{
 			if (*Idx >= S->Num()) { Self->PostInsertMovement(); return; }
-			Self->SendPost(TEXT("/weapon_entry"), (*S)[*Idx], [Self, Idx, S](bool bOK, const FString&)
+			Self->SendPost(TEXT("/weapon_entry/"), (*S)[*Idx], [Self, Idx, S](bool bOK, const FString&)
 			{
 				if (!bOK) UE_LOG(LogStatSQL, Warning, TEXT("insert_accuracy failed for player %d"), *Idx);
 				(*Idx)++;
@@ -1329,7 +1329,7 @@ void AMutStatSQL::PostInsertMovement()
 		static void Next(AMutStatSQL* Self, TSharedPtr<int32> Idx, TSharedPtr<TArray<FString>> S)
 		{
 			if (*Idx >= S->Num()) { Self->PostInsertFlagStats(); return; }
-			Self->SendPost(TEXT("/movement_entry"), (*S)[*Idx], [Self, Idx, S](bool bOK, const FString&)
+			Self->SendPost(TEXT("/movement_entry/"), (*S)[*Idx], [Self, Idx, S](bool bOK, const FString&)
 			{
 				if (!bOK) UE_LOG(LogStatSQL, Warning, TEXT("insert_movement failed for player %d"), *Idx);
 				(*Idx)++;
@@ -1366,7 +1366,7 @@ void AMutStatSQL::PostInsertFlagStats()
 		static void Next(AMutStatSQL* Self, TSharedPtr<int32> Idx, TSharedPtr<TArray<FString>> S)
 		{
 			if (*Idx >= S->Num()) { Self->PostKillFeed(); return; }
-			Self->SendPost(TEXT("/flag_entry"), (*S)[*Idx], [Self, Idx, S](bool bOK, const FString&)
+			Self->SendPost(TEXT("/flag_entry/"), (*S)[*Idx], [Self, Idx, S](bool bOK, const FString&)
 			{
 				if (!bOK) UE_LOG(LogStatSQL, Warning, TEXT("insert_flag_stats failed for player %d"), *Idx);
 				(*Idx)++;
@@ -1437,7 +1437,7 @@ void AMutStatSQL::PostTimeline()
 	auto Json = StatSQLJson::BuildTimeline(RemoteMatchId, Timeline);
 	FString Body = StatSQLJson::Serialize(Json);
 
-	SendPost(TEXT("/json_entry"), Body, [this](bool bOK, const FString&)
+	SendPost(TEXT("/json_entry/"), Body, [this](bool bOK, const FString&)
 	{
 		if (!bOK)
 		{
@@ -1469,7 +1469,7 @@ void AMutStatSQL::PostFlagRoutes()
 	auto Json = StatSQLJson::BuildFlagRoutes(RemoteMatchId, PlayerData);
 	FString Body = StatSQLJson::Serialize(Json);
 
-	SendPost(TEXT("/json_entry"), Body, [this](bool bOK, const FString&)
+	SendPost(TEXT("/json_entry/"), Body, [this](bool bOK, const FString&)
 	{
 		if (!bOK)
 		{
@@ -1521,7 +1521,7 @@ void AMutStatSQL::PostUpdateMatch()
 
 	FString Body = StatSQLJson::Serialize(Json);
 
-	SendPost(TEXT("/json_entry"), Body, [this](bool bOK, const FString&)
+	SendPost(TEXT("/json_entry/"), Body, [this](bool bOK, const FString&)
 	{
 		if (bOK)
 		{
@@ -1584,7 +1584,7 @@ FString AMutStatSQL::GetReplayId() const
 void AMutStatSQL::CheckAndUploadMapImage()
 {
 	// GET /map_image_check?map=<mapname> to see if the server already has this map's image
-	FString CheckUrl = FString::Printf(TEXT("%s/map_image_check?map=%s"), *ApiBaseUrl, *CachedMapName);
+	FString CheckUrl = FString::Printf(TEXT("%s/map_image_check/?map=%s"), *ApiBaseUrl, *CachedMapName);
 
 	TSharedRef<IHttpRequest> Request = FHttpModule::Get().CreateRequest();
 	Request->SetURL(CheckUrl);
@@ -1646,7 +1646,7 @@ void AMutStatSQL::CheckAndUploadMapImage()
 		PostData.Append((uint8*)TCHAR_TO_UTF8(*Closing), Closing.Len());
 
 		TSharedRef<IHttpRequest> UploadReq = FHttpModule::Get().CreateRequest();
-		UploadReq->SetURL(FString::Printf(TEXT("%s/map_image_upload"), *ApiBaseUrl));
+		UploadReq->SetURL(FString::Printf(TEXT("%s/map_image_upload/"), *ApiBaseUrl));
 		UploadReq->SetVerb(TEXT("POST"));
 		UploadReq->SetHeader(TEXT("Content-Type"), FString::Printf(TEXT("multipart/form-data; boundary=%s"), *Boundary));
 		if (!ApiAuthKey.IsEmpty())
@@ -1664,7 +1664,9 @@ void AMutStatSQL::CheckAndUploadMapImage()
 			}
 			else
 			{
-				UE_LOG(LogStatSQL, Warning, TEXT("Map image upload failed for %s"), *CachedMapName);
+				int32 Code = Resp2.IsValid() ? Resp2->GetResponseCode() : 0;
+				FString Body = Resp2.IsValid() ? Resp2->GetContentAsString() : TEXT("no response");
+				UE_LOG(LogStatSQL, Warning, TEXT("Map image upload failed for %s (HTTP %d): %s"), *CachedMapName, Code, *Body);
 			}
 		});
 
@@ -1682,14 +1684,22 @@ bool AMutStatSQL::ExportMinimapToPNG(TArray<uint8>& OutPNGData) const
 	FBox LevelBox(ForceInit);
 	if (!GetMinimapWorldBounds(LevelBox))
 	{
+		UE_LOG(LogStatSQL, Warning, TEXT("ExportMinimapToPNG: GetMinimapWorldBounds failed"));
+		return false;
+	}
+	UE_LOG(LogStatSQL, Log, TEXT("ExportMinimapToPNG: Bounds Min=(%.1f,%.1f,%.1f) Max=(%.1f,%.1f,%.1f)"),
+		LevelBox.Min.X, LevelBox.Min.Y, LevelBox.Min.Z, LevelBox.Max.X, LevelBox.Max.Y, LevelBox.Max.Z);
+
+	AUTRecastNavMesh* NavMesh = GetUTNavData(GetWorld());
+	if (!NavMesh)
+	{
+		UE_LOG(LogStatSQL, Warning, TEXT("ExportMinimapToPNG: No NavMesh found"));
 		return false;
 	}
 
-	AUTRecastNavMesh* NavMesh = GetUTNavData(GetWorld());
-	if (!NavMesh) return false;
-
 	TMap<const UUTPathNode*, FNavMeshTriangleList> TriangleMap;
 	NavMesh->GetNodeTriangleMap(TriangleMap);
+	UE_LOG(LogStatSQL, Log, TEXT("ExportMinimapToPNG: Got %d path nodes from NavMesh"), TriangleMap.Num());
 
 	const int32 MapSize = 1024;
 
@@ -1770,8 +1780,20 @@ bool AMutStatSQL::ExportMinimapToPNG(TArray<uint8>& OutPNGData) const
 		}
 	}
 
+	// Count filled pixels
+	int32 FilledPixels = 0;
+	for (const FColor& P : Pixels) { if (P.A > 0) FilledPixels++; }
+	UE_LOG(LogStatSQL, Log, TEXT("ExportMinimapToPNG: Rasterized %d filled pixels out of %d"), FilledPixels, MapSize * MapSize);
+
+	if (FilledPixels == 0)
+	{
+		UE_LOG(LogStatSQL, Warning, TEXT("ExportMinimapToPNG: No pixels were rasterized - empty image"));
+		return false;
+	}
+
 	// Compress to PNG
 	FImageUtils::CompressImageArray(MapSize, MapSize, Pixels, OutPNGData);
+	UE_LOG(LogStatSQL, Log, TEXT("ExportMinimapToPNG: PNG compressed to %d bytes"), OutPNGData.Num());
 	return OutPNGData.Num() > 0;
 }
 
