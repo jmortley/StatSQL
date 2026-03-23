@@ -104,6 +104,7 @@ protected:
 	float AccumulatedRoundTime;  // Sum of elapsed time from completed rounds (Elim)
 	float LastRoundStartWorldTime;  // World time when current round started
 	bool bMatchInProgress;
+	bool bFirstRoundStarted;
 
 	/** Active flag carries (keyed by carrier StatsID) for per-grab duration tracking */
 	TMap<FString, FFlagCarryInstance> ActiveFlagCarries;

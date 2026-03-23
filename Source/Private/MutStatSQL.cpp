@@ -42,6 +42,7 @@ AMutStatSQL::AMutStatSQL(const FObjectInitializer& ObjectInitializer)
 	bDebug = false;
 	bAllowNameChange = true;
 	bMatchInProgress = false;
+	bFirstRoundStarted = false;
 	CachedTimeLimit = 0;
 	MatchStartWorldTime = 0.f;
 	AccumulatedRoundTime = 0.f;
@@ -737,9 +738,10 @@ void AMutStatSQL::NotifyMatchStateChange_Implementation(FName NewState)
 		bMatchInProgress = true;
 		float Now = GetWorld()->GetTimeSeconds();
 
-		if (RemoteMatchId.IsEmpty())
+		if (!bFirstRoundStarted)
 		{
 			// First round — clear everything
+			bFirstRoundStarted = true;
 			DamageLog.Empty();
 			Timeline.Empty();
 			AccumulatedRoundTime = 0.f;
@@ -1575,13 +1577,13 @@ FString AMutStatSQL::BuildGameOptions() const
 
 	Options += FString::Printf(TEXT("?MaxPlayers=%d"), GM->GetNumPlayers());
 
-	// Collect active mutator names
+	// Collect active mutator class names (matches command line format)
 	FString MutatorNames;
 	AUTMutator* Mut = GM->BaseMutator;
 	while (Mut)
 	{
 		if (!MutatorNames.IsEmpty()) MutatorNames += TEXT(",");
-		MutatorNames += Mut->DisplayName.ToString();
+		MutatorNames += Mut->GetClass()->GetName();
 		Mut = Mut->NextMutator;
 	}
 	if (!MutatorNames.IsEmpty())
