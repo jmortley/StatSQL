@@ -188,8 +188,8 @@ float AMutStatSQL::GetMatchSeconds() const
 	AUTGameState* GS = GetWorld()->GetGameState<AUTGameState>();
 	if (GS && GS->TimeLimit > 0)
 	{
-		// Timed round: elapsed = (TimeLimit * 60) - RemainingTime
-		RoundElapsed = (float)(GS->TimeLimit * 60) - (float)GS->GetRemainingTime();
+		// Timed round: elapsed = TimeLimit - RemainingTime (TimeLimit is already in seconds)
+		RoundElapsed = (float)(GS->TimeLimit) - (float)GS->GetRemainingTime();
 		RoundElapsed = FMath::Max(0.f, RoundElapsed);
 	}
 	else if (MatchStartWorldTime > 0.f)
