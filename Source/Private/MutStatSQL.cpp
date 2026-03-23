@@ -412,6 +412,8 @@ void AMutStatSQL::NotifyLogout_Implementation(AController* C)
 		AUTPlayerState* PS = GetUTPS(C);
 		if (PS && !PS->bIsABot)
 		{
+			FString PlayerID = GetStatsID(PS);
+
 			FPlayerMatchData* Data = GetOrCreatePlayerData(PS);
 			if (Data && !Data->bStatsSnapshotted)
 			{
@@ -419,6 +421,25 @@ void AMutStatSQL::NotifyLogout_Implementation(AController* C)
 				SnapshotPlayerStats(PS, *Data);
 				Data->bDisconnected = true;
 				UE_LOG(LogStatSQL, Log, TEXT("Player disconnected, stats snapshotted: %s"), *PS->PlayerName);
+			}
+
+			// Clean up ghost flag carrier — close carry as "disconnected"
+			if (ActiveFlagCarries.Contains(PlayerID))
+			{
+				FFlagCarryInstance& Carry = ActiveFlagCarries[PlayerID];
+				Carry.DropOrCapTime = GetMatchSeconds();
+				Carry.Duration = Carry.DropOrCapTime - Carry.GrabTime;
+				Carry.Result = TEXT("disconnected");
+				if (Data)
+				{
+					Data->FlagStats.CarryInstances.Add(Carry);
+				}
+				ActiveFlagCarries.Remove(PlayerID);
+
+				if (ActiveFlagCarries.Num() == 0 && FlagRouteSampleTimer.IsValid())
+				{
+					GetWorldTimerManager().ClearTimer(FlagRouteSampleTimer);
+				}
 			}
 		}
 	}
@@ -740,8 +761,10 @@ void AMutStatSQL::NotifyMatchStateChange_Implementation(FName NewState)
 
 		if (!bFirstRoundStarted)
 		{
-			// First round — clear everything
+			// First round — clear everything (handles soft restarts)
 			bFirstRoundStarted = true;
+			PlayerData.Empty();
+			ActiveFlagCarries.Empty();
 			DamageLog.Empty();
 			Timeline.Empty();
 			AccumulatedRoundTime = 0.f;
@@ -1065,30 +1088,35 @@ void AMutStatSQL::SendPost(const FString& Endpoint, const FString& JsonBody,
 
 	Request->SetContentAsString(JsonBody);
 
-	// Capture what we need for retry (copy strings, not 'this')
-	FString CapturedUrl = ApiBaseUrl;
+	// Use TWeakObjectPtr to safely handle callbacks after map travel destroys mutator
+	TWeakObjectPtr<AMutStatSQL> WeakThis(this);
 	FString CapturedEndpoint = Endpoint;
-	FString CapturedBody = JsonBody;
-	FString CapturedAuth = ApiAuthKey;
+	TSharedRef<FString> CapturedBody = MakeShareable(new FString(JsonBody));
 
 	Request->OnProcessRequestComplete().BindLambda(
-		[this, OnComplete, RetryCount, CapturedEndpoint, CapturedBody](
+		[WeakThis, OnComplete, RetryCount, CapturedEndpoint, CapturedBody](
 			FHttpRequestPtr Req, FHttpResponsePtr Resp, bool bConnected)
 	{
+		if (!WeakThis.IsValid()) return; // Mutator destroyed during map travel
+
 		bool bSuccess = bConnected && Resp.IsValid() &&
 			EHttpResponseCodes::IsOk(Resp->GetResponseCode());
 
-		if (!bSuccess && RetryCount < MaxRetries)
+		if (!bSuccess && RetryCount < WeakThis->MaxRetries)
 		{
 			// Retry with exponential backoff
 			float Delay = FMath::Pow(2.f, (float)RetryCount); // 1s, 2s, 4s
 			UE_LOG(LogStatSQL, Warning, TEXT("POST %s failed (attempt %d/%d), retrying in %.0fs"),
-				*CapturedEndpoint, RetryCount + 1, MaxRetries, Delay);
+				*CapturedEndpoint, RetryCount + 1, WeakThis->MaxRetries, Delay);
 
 			FTimerHandle RetryHandle;
-			GetWorldTimerManager().SetTimer(RetryHandle, [this, CapturedEndpoint, CapturedBody, OnComplete, RetryCount]()
+			WeakThis->GetWorldTimerManager().SetTimer(RetryHandle,
+				[WeakThis, CapturedEndpoint, CapturedBody, OnComplete, RetryCount]()
 			{
-				SendPost(CapturedEndpoint, CapturedBody, OnComplete, RetryCount + 1);
+				if (WeakThis.IsValid())
+				{
+					WeakThis->SendPost(CapturedEndpoint, *CapturedBody, OnComplete, RetryCount + 1);
+				}
 			}, Delay, false);
 			return;
 		}
@@ -1097,7 +1125,7 @@ void AMutStatSQL::SendPost(const FString& Endpoint, const FString& JsonBody,
 		{
 			int32 Code = Resp.IsValid() ? Resp->GetResponseCode() : 0;
 			UE_LOG(LogStatSQL, Error, TEXT("POST %s FAILED after %d attempts (HTTP %d)"),
-				*CapturedEndpoint, MaxRetries, Code);
+				*CapturedEndpoint, WeakThis->MaxRetries, Code);
 		}
 
 		FString ResponseBody = (bSuccess && Resp.IsValid()) ? Resp->GetContentAsString() : FString();
