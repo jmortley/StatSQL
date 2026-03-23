@@ -238,7 +238,10 @@ protected:
 	/** Handle "mutate setname <newname>" */
 	void HandleSetName(APlayerController* Sender, const FString& NewName);
 
-	/** Check if name contains banned words */
+	/** Normalize leet speak substitutions (n1gg3r -> nigger, f4g -> fag, etc.) */
+	static FString NormalizeLeetSpeak(const FString& Input);
+
+	/** Check if name contains banned words (checks both raw and leet-normalized) */
 	static bool ContainsBadWord(const FString& Name);
 
 	/** Bad word list for name filtering */

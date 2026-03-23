@@ -1938,12 +1938,34 @@ void AMutStatSQL::HandleSetName(APlayerController* Sender, const FString& NewNam
 	}
 }
 
+FString AMutStatSQL::NormalizeLeetSpeak(const FString& Input)
+{
+	FString Result = Input;
+	Result = Result.Replace(TEXT("0"), TEXT("o"));
+	Result = Result.Replace(TEXT("1"), TEXT("i"));
+	Result = Result.Replace(TEXT("3"), TEXT("e"));
+	Result = Result.Replace(TEXT("4"), TEXT("a"));
+	Result = Result.Replace(TEXT("5"), TEXT("s"));
+	Result = Result.Replace(TEXT("7"), TEXT("t"));
+	Result = Result.Replace(TEXT("8"), TEXT("b"));
+	Result = Result.Replace(TEXT("@"), TEXT("a"));
+	Result = Result.Replace(TEXT("$"), TEXT("s"));
+	Result = Result.Replace(TEXT("!"), TEXT("i"));
+	Result = Result.Replace(TEXT("+"), TEXT("t"));
+	Result = Result.Replace(TEXT("("), TEXT("c"));
+	Result = Result.Replace(TEXT("}{"), TEXT("h"));
+	Result = Result.Replace(TEXT("|<"), TEXT("k"));
+	return Result;
+}
+
 bool AMutStatSQL::ContainsBadWord(const FString& Name)
 {
 	FString LowerName = Name.ToLower();
+	FString NormalizedName = NormalizeLeetSpeak(LowerName);
+
 	for (const FString& BadWord : GetBadWords())
 	{
-		if (LowerName.Contains(BadWord))
+		if (LowerName.Contains(BadWord) || NormalizedName.Contains(BadWord))
 		{
 			return true;
 		}
