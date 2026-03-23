@@ -353,6 +353,24 @@ TSharedRef<FJsonObject> BuildTimeline(const FString& MatchId, const TArray<FTime
 			if (!Event.ConsoleDeathMessage.IsEmpty()) EventObj->SetStringField(TEXT("console_death_message"), Event.ConsoleDeathMessage);
 		}
 
+		// Flag carry route data
+		if (Event.EventType == TEXT("flag_carry") && Event.Route.Num() > 0)
+		{
+			if (!Event.CarrierName.IsEmpty()) EventObj->SetStringField(TEXT("carrier_name"), Event.CarrierName);
+			if (!Event.Team.IsEmpty()) EventObj->SetStringField(TEXT("team"), Event.Team);
+			if (!Event.Result.IsEmpty()) EventObj->SetStringField(TEXT("result"), Event.Result);
+
+			TArray<TSharedPtr<FJsonValue>> RouteArray;
+			for (const FFlagRoutePoint& Pt : Event.Route)
+			{
+				TSharedRef<FJsonObject> PtObj = MakeShareable(new FJsonObject());
+				PtObj->SetNumberField(TEXT("t"), Pt.MatchSeconds);
+				PtObj->SetStringField(TEXT("pos"), Pt.Location);
+				RouteArray.Add(MakeShareable(new FJsonValueObject(PtObj)));
+			}
+			EventObj->SetArrayField(TEXT("route"), RouteArray);
+		}
+
 		EventsArray.Add(MakeShareable(new FJsonValueObject(EventObj)));
 	}
 	Json->SetArrayField(TEXT("events"), EventsArray);

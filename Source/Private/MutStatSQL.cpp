@@ -1450,9 +1450,35 @@ void AMutStatSQL::PostDamageFeed()
 
 void AMutStatSQL::PostTimeline()
 {
+	// Inject flag carry routes into the timeline as flag_carry events
+	// so the JS heatmap can render them alongside kills
+	for (const auto& Pair : PlayerData)
+	{
+		const FPlayerMatchData& Data = Pair.Value;
+		for (const FFlagCarryInstance& Carry : Data.FlagStats.CarryInstances)
+		{
+			if (Carry.Route.Num() < 2) continue;
+
+			FTimelineEvent CarryEvent;
+			CarryEvent.EventType = TEXT("flag_carry");
+			CarryEvent.MatchSeconds = Carry.GrabTime;
+			CarryEvent.Period = Carry.Period;
+			CarryEvent.ActorID = Carry.CarrierID;
+			CarryEvent.Detail = Carry.Result;
+
+			// Store route, team, and carrier name as extra fields
+			CarryEvent.CarrierName = Carry.CarrierName;
+			CarryEvent.Team = Carry.Team;
+			CarryEvent.Result = Carry.Result;
+			CarryEvent.Route = Carry.Route;
+
+			Timeline.Add(CarryEvent);
+		}
+	}
+
 	if (Timeline.Num() == 0)
 	{
-		PostFlagRoutes();
+		PostUpdateMatch();
 		return;
 	}
 
@@ -1465,38 +1491,6 @@ void AMutStatSQL::PostTimeline()
 		if (!bOK)
 		{
 			UE_LOG(LogStatSQL, Warning, TEXT("Timeline submission failed"));
-		}
-		PostFlagRoutes();
-	});
-}
-
-void AMutStatSQL::PostFlagRoutes()
-{
-	// Check if any player has flag carry route data
-	bool bHasRoutes = false;
-	for (const auto& Pair : PlayerData)
-	{
-		if (Pair.Value.FlagStats.CarryInstances.Num() > 0)
-		{
-			bHasRoutes = true;
-			break;
-		}
-	}
-
-	if (!bHasRoutes)
-	{
-		PostUpdateMatch();
-		return;
-	}
-
-	auto Json = StatSQLJson::BuildFlagRoutes(RemoteMatchId, PlayerData);
-	FString Body = StatSQLJson::Serialize(Json);
-
-	SendPost(TEXT("/json_entry/"), Body, [this](bool bOK, const FString&)
-	{
-		if (!bOK)
-		{
-			UE_LOG(LogStatSQL, Warning, TEXT("Flag routes submission failed"));
 		}
 		PostUpdateMatch();
 	});

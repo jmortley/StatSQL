@@ -203,7 +203,6 @@ protected:
 	void PostKillFeed();
 	void PostDamageFeed();
 	void PostTimeline();
-	void PostFlagRoutes();
 	void PostUpdateMatch();
 
 	/** Map a UE4 damage type class name to the short string Django expects */

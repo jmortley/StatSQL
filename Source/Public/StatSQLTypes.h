@@ -124,6 +124,12 @@ struct FTimelineEvent
 	FString KilledLastVolume;  // Map zone name
 	FString KillerLastVolume;
 	FString ConsoleDeathMessage;
+
+	// Extended flag_carry data (populated only for flag_carry events)
+	FString CarrierName;
+	FString Team;
+	FString Result;            // "capped", "dropped", "returned"
+	TArray<FFlagRoutePoint> Route;
 };
 
 // Single damage event for the damage feed
