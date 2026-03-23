@@ -37,9 +37,6 @@ AMutStatSQL::AMutStatSQL(const FObjectInitializer& ObjectInitializer)
 	Author = NSLOCTEXT("StatSQL", "Author", "phantaci");
 	Description = NSLOCTEXT("StatSQL", "Description", "C++ stats tracking - POSTs match data to ut4stats.com");
 
-	// Required for ModifyDamage_Implementation to be called
-	bModifyDamage = true;
-
 	ApiBaseUrl = TEXT("https://ut4stats.com");
 	bEnabled = true;
 	bDebug = false;
