@@ -234,26 +234,27 @@ TSharedRef<FJsonObject> BuildInsertAccuracy(const FString& MatchId, const FPlaye
 
 	const auto& A = Data.AccuracyStats;
 
+	// Key is always the "Shots" FName — both Shots and Hits live in the same struct
 	Json->SetNumberField(TEXT("SniperShots"), GetAccuracyStat(A, FName(TEXT("SniperShots")), true));
-	Json->SetNumberField(TEXT("SniperHits"), GetAccuracyStat(A, FName(TEXT("SniperHits")), false));
+	Json->SetNumberField(TEXT("SniperHits"), GetAccuracyStat(A, FName(TEXT("SniperShots")), false));
 	Json->SetNumberField(TEXT("ShockShots"), GetAccuracyStat(A, FName(TEXT("ShockRifleShots")), true));
-	Json->SetNumberField(TEXT("ShockHits"), GetAccuracyStat(A, FName(TEXT("ShockRifleHits")), false));
+	Json->SetNumberField(TEXT("ShockHits"), GetAccuracyStat(A, FName(TEXT("ShockRifleShots")), false));
 	Json->SetNumberField(TEXT("InstagibShots"), GetAccuracyStat(A, FName(TEXT("InstagibShots")), true));
-	Json->SetNumberField(TEXT("InstagibHits"), GetAccuracyStat(A, FName(TEXT("InstagibHits")), false));
+	Json->SetNumberField(TEXT("InstagibHits"), GetAccuracyStat(A, FName(TEXT("InstagibShots")), false));
 	Json->SetNumberField(TEXT("EnforcerShots"), GetAccuracyStat(A, FName(TEXT("EnforcerShots")), true));
-	Json->SetNumberField(TEXT("EnforcerHits"), GetAccuracyStat(A, FName(TEXT("EnforcerHits")), false));
+	Json->SetNumberField(TEXT("EnforcerHits"), GetAccuracyStat(A, FName(TEXT("EnforcerShots")), false));
 	Json->SetNumberField(TEXT("BioRifleShots"), GetAccuracyStat(A, FName(TEXT("BioRifleShots")), true));
-	Json->SetNumberField(TEXT("BioRifleHits"), GetAccuracyStat(A, FName(TEXT("BioRifleHits")), false));
+	Json->SetNumberField(TEXT("BioRifleHits"), GetAccuracyStat(A, FName(TEXT("BioRifleShots")), false));
 	Json->SetNumberField(TEXT("LinkShots"), GetAccuracyStat(A, FName(TEXT("LinkShots")), true));
-	Json->SetNumberField(TEXT("LinkHits"), GetAccuracyStat(A, FName(TEXT("LinkHits")), false));
+	Json->SetNumberField(TEXT("LinkHits"), GetAccuracyStat(A, FName(TEXT("LinkShots")), false));
 	Json->SetNumberField(TEXT("MinigunShots"), GetAccuracyStat(A, FName(TEXT("MinigunShots")), true));
-	Json->SetNumberField(TEXT("MinigunHits"), GetAccuracyStat(A, FName(TEXT("MinigunHits")), false));
+	Json->SetNumberField(TEXT("MinigunHits"), GetAccuracyStat(A, FName(TEXT("MinigunShots")), false));
 	Json->SetNumberField(TEXT("FlakShots"), GetAccuracyStat(A, FName(TEXT("FlakShots")), true));
-	Json->SetNumberField(TEXT("FlakHits"), GetAccuracyStat(A, FName(TEXT("FlakHits")), false));
+	Json->SetNumberField(TEXT("FlakHits"), GetAccuracyStat(A, FName(TEXT("FlakShots")), false));
 	Json->SetNumberField(TEXT("RocketShots"), GetAccuracyStat(A, FName(TEXT("RocketShots")), true));
-	Json->SetNumberField(TEXT("RocketHits"), GetAccuracyStat(A, FName(TEXT("RocketHits")), false));
+	Json->SetNumberField(TEXT("RocketHits"), GetAccuracyStat(A, FName(TEXT("RocketShots")), false));
 	Json->SetNumberField(TEXT("LightningRifleShots"), GetAccuracyStat(A, FName(TEXT("LightningRifleShots")), true));
-	Json->SetNumberField(TEXT("LightningRifleHits"), GetAccuracyStat(A, FName(TEXT("LightningRifleHits")), false));
+	Json->SetNumberField(TEXT("LightningRifleHits"), GetAccuracyStat(A, FName(TEXT("LightningRifleShots")), false));
 
 	return Json;
 }
