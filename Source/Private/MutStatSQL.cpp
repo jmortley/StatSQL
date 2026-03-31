@@ -41,6 +41,7 @@ AMutStatSQL::AMutStatSQL(const FObjectInitializer& ObjectInitializer)
 	bEnabled = true;
 	bDebug = false;
 	bAllowNameChange = true;
+	NameChangeCooldown = 60.f;  // 1 minute between name changes
 	bMatchInProgress = false;
 	bFirstRoundStarted = false;
 	CachedTimeLimit = 0;
@@ -558,7 +559,6 @@ bool AMutStatSQL::ModifyDamage_Implementation(int32& Damage, FVector& Momentum, 
 			{
 				FString RawName = DamageType->GetName();
 				Entry.DamageType = MapDamageTypeToFeedName(RawName);
-				UE_LOG(LogStatSQL, Log, TEXT("DamageType raw=%s mapped=%s dmg=%d"), *RawName, *Entry.DamageType, Damage);
 			}
 
 			DamageLog.Add(Entry);
@@ -913,7 +913,7 @@ void AMutStatSQL::SnapshotPlayerStats(AUTPlayerState* PS, FPlayerMatchData& OutD
 	OutData.Score = PS->Score;
 	OutData.Kills = PS->Kills;
 	OutData.Deaths = PS->Deaths;
-	OutData.Ping = PS->Ping;
+	OutData.Ping = PS->ExactPing;
 	if (PS->Team)
 	{
 		OutData.TeamIndex = PS->Team->TeamIndex;
@@ -990,7 +990,24 @@ void AMutStatSQL::SnapshotPlayerStats(AUTPlayerState* PS, FPlayerMatchData& OutD
 
 	SetAccuracy(NAME_EnforcerShots, NAME_EnforcerHits, FName(TEXT("EnforcerShots")));
 	SetAccuracy(NAME_BioRifleShots, NAME_BioRifleHits, FName(TEXT("BioRifleShots")));
-	SetAccuracy(NAME_ShockRifleShots, NAME_ShockRifleHits, FName(TEXT("ShockRifleShots")));
+	// Prefer NetcodePlus primary-only stats; fall back to engine defaults
+	{
+		const FName NPShots(TEXT("ShockPrimaryShots"));
+		const FName NPHits(TEXT("ShockPrimaryHits"));
+		float S = PS->GetStatsValue(NPShots);
+		float H = PS->GetStatsValue(NPHits);
+		if (S > 0.f || H > 0.f)
+		{
+			FStatSQLAccuracyData AD;
+			AD.Shots = S;
+			AD.Hits = H;
+			OutData.AccuracyStats.Add(FName(TEXT("ShockRifleShots")), AD);
+		}
+		else
+		{
+			SetAccuracy(NAME_ShockRifleShots, NAME_ShockRifleHits, FName(TEXT("ShockRifleShots")));
+		}
+	}
 	SetAccuracy(NAME_LinkShots, NAME_LinkHits, FName(TEXT("LinkShots")));
 	SetAccuracy(NAME_MinigunShots, NAME_MinigunHits, FName(TEXT("MinigunShots")));
 	SetAccuracy(NAME_FlakShots, NAME_FlakHits, FName(TEXT("FlakShots")));
@@ -1920,6 +1937,21 @@ void AMutStatSQL::HandleSetName(APlayerController* Sender, const FString& NewNam
 	AUTPlayerState* PS = Cast<AUTPlayerState>(Sender->PlayerState);
 	if (!PS) return;
 
+	// Rate limit — one name change per cooldown period
+	FString StatsID = GetStatsID(PS);
+	float Now = GetWorld()->GetTimeSeconds();
+	float* LastTime = LastNameChangeTime.Find(StatsID);
+	if (LastTime && (Now - *LastTime) < NameChangeCooldown)
+	{
+		int32 SecondsLeft = FMath::CeilToInt(NameChangeCooldown - (Now - *LastTime));
+		AUTPlayerController* UTPC = Cast<AUTPlayerController>(Sender);
+		if (UTPC)
+		{
+			UTPC->ClientSay(nullptr, FString::Printf(TEXT("You can change your name again in %d seconds."), SecondsLeft), ChatDestinations::System);
+		}
+		return;
+	}
+
 	// Validate length
 	if (NewName.Len() < 2 || NewName.Len() > 24)
 	{
@@ -1949,6 +1981,7 @@ void AMutStatSQL::HandleSetName(APlayerController* Sender, const FString& NewNam
 	if (GM)
 	{
 		GM->ChangeName(Sender, NewName, true);
+		LastNameChangeTime.Add(StatsID, Now);
 		UE_LOG(LogStatSQL, Log, TEXT("Player renamed: %s -> %s"), *OldName, *NewName);
 
 		// Update our cached data

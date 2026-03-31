@@ -76,6 +76,12 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "StatSQL")
 	bool bAllowNameChange;
 
+	/** Rate limit: minimum seconds between name changes per player */
+	float NameChangeCooldown;
+
+	/** Tracks last name-change time per player (keyed by StatsID) */
+	TMap<FString, float> LastNameChangeTime;
+
 	/** Approved server keys (from Mod.ini) — if non-empty, only these keys can submit */
 	TArray<FString> ApprovedKeys;
 
