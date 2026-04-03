@@ -335,6 +335,7 @@ TSharedRef<FJsonObject> BuildTimeline(const FString& MatchId, const TArray<FTime
 		if (!Event.ActorID.IsEmpty()) EventObj->SetStringField(TEXT("actor_id"), Event.ActorID);
 		if (!Event.TargetID.IsEmpty()) EventObj->SetStringField(TEXT("target_id"), Event.TargetID);
 		if (!Event.Detail.IsEmpty()) EventObj->SetStringField(TEXT("detail"), Event.Detail);
+		if (!Event.ActorLocation.IsEmpty()) EventObj->SetStringField(TEXT("actor_location"), Event.ActorLocation);
 
 		// Extended kill data (only present for kill/suicide events)
 		if (Event.EventType == TEXT("kill") || Event.EventType == TEXT("suicide"))

@@ -160,7 +160,8 @@ protected:
 
 	/** Add a timeline event (generic: flags, overtime, etc.) */
 	void AddTimelineEvent(const FString& EventType, const FString& ActorID,
-		const FString& TargetID = FString(), const FString& Detail = FString());
+		const FString& TargetID = FString(), const FString& Detail = FString(),
+		const FVector& ActorLoc = FVector::ZeroVector);
 
 	/** Add a detailed kill timeline event with full kill log data */
 	void AddKillTimelineEvent(AController* Killer, AController* Other,

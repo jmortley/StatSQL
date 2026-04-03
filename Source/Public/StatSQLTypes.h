@@ -125,6 +125,9 @@ struct FTimelineEvent
 	FString KillerLastVolume;
 	FString ConsoleDeathMessage;
 
+	// Actor location for flag events (flag_cap, flag_return, flag_grab, flag_drop, flag_deny)
+	FString ActorLocation;     // World location as "X,Y,Z"
+
 	// Extended flag_carry data (populated only for flag_carry events)
 	FString CarrierName;
 	FString Team;

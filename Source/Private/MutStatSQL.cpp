@@ -281,7 +281,7 @@ FPlayerMatchData* AMutStatSQL::GetOrCreatePlayerData(AUTPlayerState* PS)
 // ============================================================
 
 void AMutStatSQL::AddTimelineEvent(const FString& EventType, const FString& ActorID,
-	const FString& TargetID, const FString& Detail)
+	const FString& TargetID, const FString& Detail, const FVector& ActorLoc)
 {
 	FTimelineEvent Event;
 	Event.MatchSeconds = GetMatchSeconds();
@@ -291,6 +291,10 @@ void AMutStatSQL::AddTimelineEvent(const FString& EventType, const FString& Acto
 	Event.ActorID = ActorID;
 	Event.TargetID = TargetID;
 	Event.Detail = Detail;
+	if (!ActorLoc.IsZero())
+	{
+		Event.ActorLocation = FString::Printf(TEXT("%.0f,%.0f,%.0f"), ActorLoc.X, ActorLoc.Y, ActorLoc.Z);
+	}
 	Timeline.Add(Event);
 }
 
@@ -659,21 +663,23 @@ void AMutStatSQL::ScoreObject_Implementation(AUTCarriedObject* GameObject, AUTCh
 		}
 	};
 
+	FVector HolderLoc = HolderPawn ? HolderPawn->GetActorLocation() : FVector::ZeroVector;
+
 	// Flag capture
 	if (Reason == FName(TEXT("FlagCapture")))
 	{
 		CloseCarry(HolderID, TEXT("capped"));
-		AddTimelineEvent(TEXT("flag_cap"), HolderID);
+		AddTimelineEvent(TEXT("flag_cap"), HolderID, FString(), FString(), HolderLoc);
 	}
 	// Flag return
 	else if (Reason == FName(TEXT("SentHome")))
 	{
-		AddTimelineEvent(TEXT("flag_return"), HolderID);
+		AddTimelineEvent(TEXT("flag_return"), HolderID, FString(), FString(), HolderLoc);
 	}
 	// Flag deny
 	else if (Reason == FName(TEXT("FlagDeny")))
 	{
-		AddTimelineEvent(TEXT("flag_deny"), HolderID);
+		AddTimelineEvent(TEXT("flag_deny"), HolderID, FString(), FString(), HolderLoc);
 	}
 	// Flag grab - start carry tracking with route sampling
 	else if (Reason == FName(TEXT("FlagGrab")) || Reason == FName(TEXT("FlagFirstGrab")))
@@ -690,13 +696,12 @@ void AMutStatSQL::ScoreObject_Implementation(AUTCarriedObject* GameObject, AUTCh
 		{
 			FFlagRoutePoint GrabPoint;
 			GrabPoint.MatchSeconds = NewCarry.GrabTime;
-			FVector Loc = HolderPawn->GetActorLocation();
-			GrabPoint.Location = FString::Printf(TEXT("%.0f,%.0f,%.0f"), Loc.X, Loc.Y, Loc.Z);
+			GrabPoint.Location = FString::Printf(TEXT("%.0f,%.0f,%.0f"), HolderLoc.X, HolderLoc.Y, HolderLoc.Z);
 			NewCarry.Route.Add(GrabPoint);
 		}
 
 		ActiveFlagCarries.Add(HolderID, NewCarry);
-		AddTimelineEvent(TEXT("flag_grab"), HolderID);
+		AddTimelineEvent(TEXT("flag_grab"), HolderID, FString(), FString(), HolderLoc);
 
 		// Start route sampling timer if not already running
 		if (!FlagRouteSampleTimer.IsValid())
@@ -709,7 +714,7 @@ void AMutStatSQL::ScoreObject_Implementation(AUTCarriedObject* GameObject, AUTCh
 	else if (Reason == FName(TEXT("FlagDrop")))
 	{
 		CloseCarry(HolderID, TEXT("dropped"));
-		AddTimelineEvent(TEXT("flag_drop"), HolderID);
+		AddTimelineEvent(TEXT("flag_drop"), HolderID, FString(), FString(), HolderLoc);
 	}
 }
 
