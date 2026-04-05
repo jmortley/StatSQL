@@ -10,6 +10,7 @@
 #include "UTPlayerState.h"
 #include "UTPlayerController.h"
 #include "UTCarriedObject.h"
+#include "UTCTFFlagBase.h"
 #include "UTTeamInfo.h"
 #include "UTBaseGameMode.h"
 #include "UTBasePlayerController.h"
@@ -176,6 +177,9 @@ void AMutStatSQL::BeginPlay()
 			CachedServerName = GS->ServerName;
 		}
 	}
+
+	// Bind to flag holder-changed delegates for grab detection
+	TryBindFlagEvents();
 }
 
 // ============================================================
@@ -681,35 +685,7 @@ void AMutStatSQL::ScoreObject_Implementation(AUTCarriedObject* GameObject, AUTCh
 	{
 		AddTimelineEvent(TEXT("flag_deny"), HolderID, FString(), FString(), HolderLoc);
 	}
-	// Flag grab - start carry tracking with route sampling
-	else if (Reason == FName(TEXT("FlagGrab")) || Reason == FName(TEXT("FlagFirstGrab")))
-	{
-		FFlagCarryInstance NewCarry;
-		NewCarry.GrabTime = GetMatchSeconds();
-		NewCarry.Period = GetCurrentPeriod();
-		NewCarry.CarrierID = HolderID;
-		NewCarry.CarrierName = Holder->PlayerName;
-		NewCarry.Team = (Holder->Team && Holder->Team->TeamIndex == 0) ? TEXT("Red") : TEXT("Blue");
-
-		// Record grab location as first route point
-		if (HolderPawn)
-		{
-			FFlagRoutePoint GrabPoint;
-			GrabPoint.MatchSeconds = NewCarry.GrabTime;
-			GrabPoint.Location = FString::Printf(TEXT("%.0f,%.0f,%.0f"), HolderLoc.X, HolderLoc.Y, HolderLoc.Z);
-			NewCarry.Route.Add(GrabPoint);
-		}
-
-		ActiveFlagCarries.Add(HolderID, NewCarry);
-		AddTimelineEvent(TEXT("flag_grab"), HolderID, FString(), FString(), HolderLoc);
-
-		// Start route sampling timer if not already running
-		if (!FlagRouteSampleTimer.IsValid())
-		{
-			GetWorldTimerManager().SetTimer(FlagRouteSampleTimer, this,
-				&AMutStatSQL::SampleFlagCarrierPositions, 0.5f, true);
-		}
-	}
+	// Flag grab is handled by OnFlagHolderChanged (ScoreObject is NOT called for grabs)
 	// Flag drop
 	else if (Reason == FName(TEXT("FlagDrop")))
 	{
@@ -903,6 +879,69 @@ void AMutStatSQL::OnTeamArenaClutch(AUTPlayerState* ClutchPlayer, int32 EnemiesA
 	{
 		AddTimelineEvent(TEXT("clutch"), GetStatsID(ClutchPlayer), FString(),
 			FString::Printf(TEXT("1v%d"), EnemiesAlive));
+	}
+}
+
+// ============================================================
+// Flag grab detection via holder-changed delegate
+// ============================================================
+
+void AMutStatSQL::TryBindFlagEvents()
+{
+	AUTCTFGameState* CTFGS = GetWorld()->GetGameState<AUTCTFGameState>();
+	if (!CTFGS) return;
+
+	// Use GetFlagBase() accessor — never access FlagBases directly (ABI mismatch)
+	for (int32 TeamIdx = 0; TeamIdx < 2; TeamIdx++)
+	{
+		AUTCTFFlagBase* Base = CTFGS->GetFlagBase(TeamIdx);
+		if (Base && Base->GetCarriedObject())
+		{
+			Base->GetCarriedObject()->OnCarriedObjectHolderChangedDelegate.AddDynamic(
+				this, &AMutStatSQL::OnFlagHolderChanged);
+			UE_LOG(LogStatSQL, Log, TEXT("Bound to flag holder-changed delegate for team %d"), TeamIdx);
+		}
+	}
+}
+
+void AMutStatSQL::OnFlagHolderChanged(AUTCarriedObject* Flag)
+{
+	if (!Flag || !bMatchInProgress) return;
+
+	// Only care about grabs (Holder is set, pawn exists)
+	AUTPlayerState* Holder = Flag->Holder;
+	if (!Holder) return;
+
+	AUTCharacter* HolderPawn = Flag->HoldingPawn;
+	if (!HolderPawn) return;
+
+	FString HolderID = GetStatsID(Holder);
+	if (HolderID.IsEmpty()) return;
+
+	FVector HolderLoc = HolderPawn->GetActorLocation();
+
+	// Start carry tracking
+	FFlagCarryInstance NewCarry;
+	NewCarry.GrabTime = GetMatchSeconds();
+	NewCarry.Period = GetCurrentPeriod();
+	NewCarry.CarrierID = HolderID;
+	NewCarry.CarrierName = Holder->PlayerName;
+	NewCarry.Team = (Holder->Team && Holder->Team->TeamIndex == 0) ? TEXT("Red") : TEXT("Blue");
+
+	// Record grab location as first route point
+	FFlagRoutePoint GrabPoint;
+	GrabPoint.MatchSeconds = NewCarry.GrabTime;
+	GrabPoint.Location = FString::Printf(TEXT("%.0f,%.0f,%.0f"), HolderLoc.X, HolderLoc.Y, HolderLoc.Z);
+	NewCarry.Route.Add(GrabPoint);
+
+	ActiveFlagCarries.Add(HolderID, NewCarry);
+	AddTimelineEvent(TEXT("flag_grab"), HolderID, FString(), FString(), HolderLoc);
+
+	// Start route sampling timer if not already running
+	if (!FlagRouteSampleTimer.IsValid())
+	{
+		GetWorldTimerManager().SetTimer(FlagRouteSampleTimer, this,
+			&AMutStatSQL::SampleFlagCarrierPositions, 0.5f, true);
 	}
 }
 

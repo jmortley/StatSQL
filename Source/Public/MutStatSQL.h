@@ -183,6 +183,13 @@ protected:
 	/** Try to bind to TeamArena delegates if the game mode supports them */
 	void TryBindTeamArenaEvents();
 
+	/** Called when a flag's holder changes (grab or release) */
+	UFUNCTION()
+	void OnFlagHolderChanged(AUTCarriedObject* Flag);
+
+	/** Try to bind to flag holder-changed delegates for grab detection */
+	void TryBindFlagEvents();
+
 	// ============================================================
 	// HTTP submission
 	// ============================================================
