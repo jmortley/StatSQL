@@ -1035,6 +1035,8 @@ void AMutStatSQL::SnapshotPlayerStats(AUTPlayerState* PS, FPlayerMatchData& OutD
 	SetAccuracy(NAME_EnforcerShots, NAME_EnforcerHits, FName(TEXT("EnforcerShots")));
 	SetAccuracy(NAME_BioRifleShots, NAME_BioRifleHits, FName(TEXT("BioRifleShots")));
 	// Prefer NetcodePlus primary-only stats; fall back to engine defaults
+	// (NetcodePlus shock rifle suppresses ShotsStatsName in FireProjectile
+	// so ShockRifleShots only counts primary beam shots, not shock balls)
 	{
 		const FName NPShots(TEXT("ShockPrimaryShots"));
 		const FName NPHits(TEXT("ShockPrimaryHits"));
