@@ -1042,6 +1042,11 @@ void AMutStatSQL::SnapshotPlayerStats(AUTPlayerState* PS, FPlayerMatchData& OutD
 		const FName NPHits(TEXT("ShockPrimaryHits"));
 		float S = PS->GetStatsValue(NPShots);
 		float H = PS->GetStatsValue(NPHits);
+		float EngineS = PS->GetStatsValue(NAME_ShockRifleShots);
+		float EngineH = PS->GetStatsValue(NAME_ShockRifleHits);
+		UE_LOG(LogStatSQL, Log, TEXT("Shock accuracy for %s: Primary=%.0f/%.0f Engine=%.0f/%.0f (using %s)"),
+			*OutData.PlayerName, S, H, EngineS, EngineH,
+			(S > 0.f || H > 0.f) ? TEXT("PRIMARY") : TEXT("ENGINE FALLBACK"));
 		if (S > 0.f || H > 0.f)
 		{
 			FStatSQLAccuracyData AD;
