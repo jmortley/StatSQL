@@ -27,6 +27,7 @@ namespace UnrealBuildTool.Rules
                     "Http",
                     "Json",
                     "JsonUtilities",
+                    "ServerShield",
                 }
             );
         }

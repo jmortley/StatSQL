@@ -218,6 +218,7 @@ protected:
 	void PostDamageFeed();
 	void PostTimeline();
 	void PostUpdateMatch();
+	void PostHitplotData();
 
 	/** Map a UE4 damage type class name to the short string Django expects */
 	static FString MapDamageTypeToFeedName(const FString& ClassName);

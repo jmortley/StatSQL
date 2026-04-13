@@ -24,6 +24,8 @@
 #include "Http.h"
 #include "Json.h"
 #include "TimerManager.h"
+#include "MutServerShield.h"
+#include "SSPlayerProfile.h"
 
 DEFINE_LOG_CATEGORY(LogStatSQL);
 
@@ -1639,12 +1641,87 @@ void AMutStatSQL::PostUpdateMatch()
 		if (bOK)
 		{
 			UE_LOG(LogStatSQL, Log, TEXT("Match submission complete - MatchId: %s"), *RemoteMatchId);
+			PostHitplotData();
 		}
 		else
 		{
 			UE_LOG(LogStatSQL, Error, TEXT("update_match failed - MatchId: %s"), *RemoteMatchId);
 		}
 	});
+}
+
+void AMutStatSQL::PostHitplotData()
+{
+	// Find ServerShield mutator in the world to read hit data
+	AMutServerShield* SS = nullptr;
+	for (TActorIterator<AMutServerShield> It(GetWorld()); It; ++It)
+	{
+		SS = *It;
+		break;
+	}
+
+	if (!SS)
+	{
+		UE_LOG(LogStatSQL, Log, TEXT("ServerShield not found - skipping hitplot submission"));
+		return;
+	}
+
+	const TMap<FString, USSPlayerProfile*>& Profiles = SS->GetPlayerProfiles();
+	int32 TotalHits = 0;
+
+	for (auto& Pair : Profiles)
+	{
+		USSPlayerProfile* Profile = Pair.Value;
+		if (!Profile) continue;
+
+		// Collect precision weapon hits with valid capsule-local data
+		TSharedRef<FJsonObject> Root = MakeShareable(new FJsonObject());
+		Root->SetStringField(TEXT("action"), TEXT("insert_hitplot"));
+		Root->SetStringField(TEXT("matchid"), RemoteMatchId);
+		Root->SetStringField(TEXT("playerid"), Profile->UniqueId);
+
+		TArray<TSharedPtr<FJsonValue>> HitsArray;
+		for (const FFireEvent& FE : Profile->FireEvents)
+		{
+			if (!FE.bHit || !FE.bPrecisionWeapon) continue;
+			if (FE.CapsuleLocalHit.IsZero() && FE.HitDotProduct <= -2.0f) continue;
+
+			TSharedRef<FJsonObject> Hit = MakeShareable(new FJsonObject());
+			Hit->SetNumberField(TEXT("x"), FE.CapsuleLocalHit.X);
+			Hit->SetNumberField(TEXT("y"), FE.CapsuleLocalHit.Y);
+			Hit->SetNumberField(TEXT("z"), FE.CapsuleLocalHit.Z);
+			Hit->SetNumberField(TEXT("dot"), FE.HitDotProduct);
+			Hit->SetNumberField(TEXT("rad"), FE.RadialOffset);
+			Hit->SetStringField(TEXT("wpn"), FE.WeaponName.ToString());
+			Hit->SetNumberField(TEXT("hs"), FE.bHeadshot ? 1 : 0);
+			Hit->SetNumberField(TEXT("dmg"), FE.Damage);
+			Hit->SetNumberField(TEXT("dist"), FE.TargetDistance);
+			HitsArray.Add(MakeShareable(new FJsonValueObject(Hit)));
+		}
+
+		if (HitsArray.Num() == 0) continue;
+
+		Root->SetArrayField(TEXT("hits"), HitsArray);
+		TotalHits += HitsArray.Num();
+
+		FString Body = StatSQLJson::Serialize(Root);
+		SendPost(TEXT("/hitplot_entry/"), Body, [this, PlayerName = Profile->PlayerName, NumHits = HitsArray.Num()](bool bOK, const FString&)
+		{
+			if (bOK)
+			{
+				UE_LOG(LogStatSQL, Log, TEXT("Hitplot submitted: %s (%d hits)"), *PlayerName, NumHits);
+			}
+			else
+			{
+				UE_LOG(LogStatSQL, Warning, TEXT("Hitplot submission failed for %s"), *PlayerName);
+			}
+		});
+	}
+
+	if (TotalHits > 0)
+	{
+		UE_LOG(LogStatSQL, Log, TEXT("Hitplot data: %d total hits across %d players"), TotalHits, Profiles.Num());
+	}
 }
 
 // ============================================================
