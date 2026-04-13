@@ -1696,6 +1696,7 @@ void AMutStatSQL::PostHitplotData()
 			Hit->SetNumberField(TEXT("hs"), FE.bHeadshot ? 1 : 0);
 			Hit->SetNumberField(TEXT("dmg"), FE.Damage);
 			Hit->SetNumberField(TEXT("dist"), FE.TargetDistance);
+			Hit->SetNumberField(TEXT("prad"), FE.PaddedRadius);
 			HitsArray.Add(MakeShareable(new FJsonValueObject(Hit)));
 		}
 
@@ -1705,7 +1706,9 @@ void AMutStatSQL::PostHitplotData()
 		TotalHits += HitsArray.Num();
 
 		FString Body = StatSQLJson::Serialize(Root);
-		SendPost(TEXT("/hitplot_entry/"), Body, [this, PlayerName = Profile->PlayerName, NumHits = HitsArray.Num()](bool bOK, const FString&)
+		FString PlayerName = Profile->PlayerName;
+		int32 NumHits = HitsArray.Num();
+		SendPost(TEXT("/hitplot_entry/"), Body, [this, PlayerName, NumHits](bool bOK, const FString&)
 		{
 			if (bOK)
 			{
