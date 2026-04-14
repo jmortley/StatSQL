@@ -1036,31 +1036,8 @@ void AMutStatSQL::SnapshotPlayerStats(AUTPlayerState* PS, FPlayerMatchData& OutD
 
 	SetAccuracy(NAME_EnforcerShots, NAME_EnforcerHits, FName(TEXT("EnforcerShots")));
 	SetAccuracy(NAME_BioRifleShots, NAME_BioRifleHits, FName(TEXT("BioRifleShots")));
-	// Prefer NetcodePlus primary-only stats; fall back to engine defaults
-	// (NetcodePlus shock rifle suppresses ShotsStatsName in FireProjectile
-	// so ShockRifleShots only counts primary beam shots, not shock balls)
-	{
-		const FName NPShots(TEXT("ShockPrimaryShots"));
-		const FName NPHits(TEXT("ShockPrimaryHits"));
-		float S = PS->GetStatsValue(NPShots);
-		float H = PS->GetStatsValue(NPHits);
-		float EngineS = PS->GetStatsValue(NAME_ShockRifleShots);
-		float EngineH = PS->GetStatsValue(NAME_ShockRifleHits);
-		UE_LOG(LogStatSQL, Log, TEXT("Shock accuracy for %s: Primary=%.0f/%.0f Engine=%.0f/%.0f (using %s)"),
-			*OutData.PlayerName, S, H, EngineS, EngineH,
-			(S > 0.f || H > 0.f) ? TEXT("PRIMARY") : TEXT("ENGINE FALLBACK"));
-		if (S > 0.f || H > 0.f)
-		{
-			FStatSQLAccuracyData AD;
-			AD.Shots = S;
-			AD.Hits = H;
-			OutData.AccuracyStats.Add(FName(TEXT("ShockRifleShots")), AD);
-		}
-		else
-		{
-			SetAccuracy(NAME_ShockRifleShots, NAME_ShockRifleHits, FName(TEXT("ShockRifleShots")));
-		}
-	}
+	// Use engine stats for shock — ShockPrimaryShots/Hits was unreliable
+	SetAccuracy(NAME_ShockRifleShots, NAME_ShockRifleHits, FName(TEXT("ShockRifleShots")));
 	SetAccuracy(NAME_LinkShots, NAME_LinkHits, FName(TEXT("LinkShots")));
 	SetAccuracy(NAME_MinigunShots, NAME_MinigunHits, FName(TEXT("MinigunShots")));
 	SetAccuracy(NAME_FlakShots, NAME_FlakHits, FName(TEXT("FlakShots")));
