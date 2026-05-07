@@ -2031,8 +2031,17 @@ void AMutStatSQL::Mutate_Implementation(const FString& MutateString, APlayerCont
 	if (!HasAuthority()) return;
 
 	// "mutate setname NewPlayerName"
-	if (MutateString.StartsWith(TEXT("setname ")) && bAllowNameChange)
+	if (MutateString.StartsWith(TEXT("setname ")))
 	{
+		if (!bAllowNameChange)
+		{
+			AUTPlayerController* UTPC = Cast<AUTPlayerController>(Sender);
+			if (UTPC)
+			{
+				UTPC->ClientSay(nullptr, TEXT("Name change is disabled on this server."), ChatDestinations::System);
+			}
+			return;
+		}
 		FString NewName = MutateString.Mid(8).Trim();
 		HandleSetName(Sender, NewName);
 	}
@@ -2083,21 +2092,44 @@ void AMutStatSQL::HandleSetName(APlayerController* Sender, const FString& NewNam
 	}
 
 	FString OldName = PS->PlayerName;
+	AUTPlayerController* UTPC = Cast<AUTPlayerController>(Sender);
+
+	if (OldName == NewName)
+	{
+		if (UTPC)
+		{
+			UTPC->ClientSay(nullptr, TEXT("That's already your name."), ChatDestinations::System);
+		}
+		return;
+	}
 
 	// Use the game mode's ChangeName to properly update everything
 	AUTBaseGameMode* GM = Cast<AUTBaseGameMode>(GetWorld()->GetAuthGameMode());
 	if (GM)
 	{
 		GM->ChangeName(Sender, NewName, true);
-		LastNameChangeTime.Add(StatsID, Now);
-		UE_LOG(LogStatSQL, Log, TEXT("Player renamed: %s -> %s"), *OldName, *NewName);
+	}
 
-		// Update our cached data
-		FPlayerMatchData* Data = PlayerData.Find(GetStatsID(PS));
-		if (Data)
-		{
-			Data->PlayerName = NewName;
-		}
+	// ChangeName may no-op or append a suffix; force the value directly to be sure
+	if (PS->PlayerName != NewName)
+	{
+		PS->SetPlayerName(NewName);
+	}
+	PS->ForceNetUpdate();
+
+	LastNameChangeTime.Add(StatsID, Now);
+	UE_LOG(LogStatSQL, Log, TEXT("Player renamed: %s -> %s"), *OldName, *PS->PlayerName);
+
+	// Update our cached data
+	FPlayerMatchData* Data = PlayerData.Find(StatsID);
+	if (Data)
+	{
+		Data->PlayerName = PS->PlayerName;
+	}
+
+	if (UTPC)
+	{
+		UTPC->ClientSay(nullptr, FString::Printf(TEXT("Name changed: %s -> %s"), *OldName, *PS->PlayerName), ChatDestinations::System);
 	}
 }
 
