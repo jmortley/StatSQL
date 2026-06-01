@@ -106,6 +106,11 @@ protected:
 	FString CachedGameMode;
 	FString CachedServerName;
 	int32 CachedTimeLimit;
+	/** PugId parsed from the launch URL (?PugId=N); -1 when not a bot PUG.
+	    Forwarded in BuildGameOptions() so the Django site can correlate this
+	    match to its Discord PUG — servername is varchar(35) and truncates the
+	    "..._Pug_<id>_" token off long hub names. */
+	int32 CachedPugId;
 	float MatchStartWorldTime;
 	float AccumulatedRoundTime;  // Sum of elapsed time from completed rounds (Elim)
 	float LastRoundStartWorldTime;  // World time when current round started

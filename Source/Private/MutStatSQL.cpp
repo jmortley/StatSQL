@@ -48,6 +48,7 @@ AMutStatSQL::AMutStatSQL(const FObjectInitializer& ObjectInitializer)
 	bMatchInProgress = false;
 	bFirstRoundStarted = false;
 	CachedTimeLimit = 0;
+	CachedPugId = -1;
 	MatchStartWorldTime = 0.f;
 	AccumulatedRoundTime = 0.f;
 	LastRoundStartWorldTime = 0.f;
@@ -88,10 +89,19 @@ void AMutStatSQL::Init_Implementation(const FString& Options)
 		bEnabled = EnabledVal.ToBool();
 	}
 
-	UE_LOG(LogStatSQL, Log, TEXT("Init - URL: %s, Enabled: %s, Key: %s, AllowNameChange: %s"),
+	// PugId from the launch URL (?PugId=N) — set by the Discord PUG bot.
+	// Forwarded later in BuildGameOptions so the stats site can correlate
+	// this match to its PUG. Absent for non-bot servers (stays -1).
+	FString PugIdVal = ParseOption(Options, TEXT("PugId"));
+	if (!PugIdVal.IsEmpty() && PugIdVal.IsNumeric())
+	{
+		CachedPugId = FCString::Atoi(*PugIdVal);
+	}
+
+	UE_LOG(LogStatSQL, Log, TEXT("Init - URL: %s, Enabled: %s, Key: %s, AllowNameChange: %s, PugId: %d"),
 		*ApiBaseUrl, bEnabled ? TEXT("true") : TEXT("false"),
 		ApiAuthKey.IsEmpty() ? TEXT("NOT SET") : TEXT("SET"),
-		bAllowNameChange ? TEXT("true") : TEXT("false"));
+		bAllowNameChange ? TEXT("true") : TEXT("false"), CachedPugId);
 }
 
 void AMutStatSQL::LoadModIni()
@@ -1831,6 +1841,13 @@ FString AMutStatSQL::BuildGameOptions() const
 	}
 
 	Options += FString::Printf(TEXT("?MaxPlayers=%d"), GM->GetNumPlayers());
+
+	// Forward the PugId (from the launch URL) so the stats site can correlate
+	// this match to its Discord PUG. Only when launched by the bot (>= 0).
+	if (CachedPugId >= 0)
+	{
+		Options += FString::Printf(TEXT("?PugId=%d"), CachedPugId);
+	}
 
 	// Collect active mutator class names (matches command line format)
 	FString MutatorNames;
