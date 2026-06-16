@@ -426,6 +426,19 @@ void AMutStatSQL::PostPlayerInit_Implementation(AController* C)
 	AUTPlayerState* PS = GetUTPS(C);
 	if (PS && !PS->bIsABot && !PS->bOnlySpectator)
 	{
+		// [StatDrop] diagnostic: detect a REJOIN of a player we already have data for. If their
+		// prior entry was snapshotted/flagged-disconnected at logout, the one-shot bStatsSnapshotted
+		// latch makes the match-end snapshot SKIP them -> post-rejoin score/accuracy/objective play is
+		// lost. Warning so it survives the Shipping server build (Log verbosity is stripped there).
+		if (!PS->StatsID.IsEmpty())
+		{
+			if (const FPlayerMatchData* Prior = PlayerData.Find(PS->StatsID))
+			{
+				UE_LOG(LogStatSQL, Warning, TEXT("[StatDrop] REJOIN %s [%s] — prior entry snapshotted=%d disconnected=%d kills=%d score=%d"),
+					*PS->PlayerName, *PS->StatsID, Prior->bStatsSnapshotted ? 1 : 0, Prior->bDisconnected ? 1 : 0, Prior->Kills, Prior->Score);
+			}
+		}
+
 		GetOrCreatePlayerData(PS);
 		UE_LOG(LogStatSQL, Verbose, TEXT("Player registered: %s [%s]"), *PS->PlayerName, *PS->StatsID);
 	}
@@ -446,7 +459,15 @@ void AMutStatSQL::NotifyLogout_Implementation(AController* C)
 				// Snapshot all stats NOW before the PlayerState is destroyed
 				SnapshotPlayerStats(PS, *Data);
 				Data->bDisconnected = true;
-				UE_LOG(LogStatSQL, Log, TEXT("Player disconnected, stats snapshotted: %s"), *PS->PlayerName);
+				// [StatDrop] Warning (survives Shipping): this latches bStatsSnapshotted, so if the
+				// player rejoins, the match-end pass will SKIP them and submit this frozen snapshot.
+				UE_LOG(LogStatSQL, Warning, TEXT("[StatDrop] LOGOUT snapshot %s [%s] — score=%d kills=%d deaths=%d (latch set; a rejoin's later score/acc/objective play is skipped at match end)"),
+					*PS->PlayerName, *PS->StatsID, Data->Score, Data->Kills, Data->Deaths);
+			}
+			else if (Data)
+			{
+				UE_LOG(LogStatSQL, Warning, TEXT("[StatDrop] LOGOUT %s [%s] — already snapshotted, keeping stale snapshot (score=%d kills=%d)"),
+					*PS->PlayerName, *PS->StatsID, Data->Score, Data->Kills);
 			}
 
 			// Clean up ghost flag carrier — close carry as "disconnected"
@@ -597,6 +618,7 @@ FString AMutStatSQL::MapDamageTypeToFeedName(const FString& ClassName)
 {
 	// Map UE4 damage type class names to the short strings Django's damage_feed expects
 	// These match what the Blueprint mutator sent
+	if (ClassName.Contains(TEXT("Instagib"))) return TEXT("Instagib");  // iCTF: NCPlusUTDmg_Instagib_C and any *Instagib* variant
 	if (ClassName.Contains(TEXT("SniperHeadShot"))) return TEXT("SniperHeadshot");
 	if (ClassName.Contains(TEXT("Sniper"))) return TEXT("Sniper");
 	if (ClassName.Contains(TEXT("ShockCombo"))) return TEXT("ShockCombo");
@@ -620,8 +642,13 @@ FString AMutStatSQL::MapDamageTypeToFeedName(const FString& ClassName)
 	if (ClassName.Contains(TEXT("Telefrag"))) return TEXT("Telefrag");
 	if (ClassName.Contains(TEXT("Translocator"))) return TEXT("Translocator");
 
-	// Unknown — log it so we can add the mapping, then return raw class name
-	UE_LOG(LogStatSQL, Warning, TEXT("Unknown damage type: %s"), *ClassName);
+	// Unknown — log ONCE per distinct type (was spamming once per frag), then return raw class name
+	static TSet<FString> WarnedUnknownDamageTypes;
+	if (!WarnedUnknownDamageTypes.Contains(ClassName))
+	{
+		WarnedUnknownDamageTypes.Add(ClassName);
+		UE_LOG(LogStatSQL, Warning, TEXT("Unknown damage type (logged once): %s"), *ClassName);
+	}
 	return ClassName;
 }
 
@@ -978,6 +1005,12 @@ void AMutStatSQL::SnapshotPlayerStats(AUTPlayerState* PS, FPlayerMatchData& OutD
 {
 	if (!PS || OutData.bStatsSnapshotted) return;
 
+	// [StatDrop] capture the hook-accumulated kills/deaths BEFORE the overwrites below, so the
+	// end-of-function diagnostic can flag when the PlayerState values diverge from what the live
+	// hooks counted — the signature of a reconnect to a fresh PlayerState with reset StatsData.
+	const int32 HookKills = OutData.Kills;
+	const int32 HookDeaths = OutData.Deaths;
+
 	// Basic stats from properties
 	OutData.Score = PS->Score;
 	OutData.Kills = PS->Kills;
@@ -1114,6 +1147,18 @@ void AMutStatSQL::SnapshotPlayerStats(AUTPlayerState* PS, FPlayerMatchData& OutD
 	OutData.FlagStats.AttackerScore = (int32)PS->GetStatsValue(NAME_AttackerScore);
 	OutData.FlagStats.DefenderScore = (int32)PS->GetStatsValue(NAME_DefenderScore);
 
+	// [StatDrop] Warning (survives Shipping): compare the PlayerState (snapshot source) against the
+	// hook-accumulated totals, and probe a few StatsData-sourced values. All-zero objective/accuracy
+	// on a player with real hook kills == the snapshot ran against a fresh/reset PlayerState (reconnect
+	// past the inactive-PS window) -> CTF objective + accuracy + score lost. "hook>PS" flags the clobber.
+	UE_LOG(LogStatSQL, Warning,
+		TEXT("[StatDrop] SNAPSHOT %s [%s] — PS(score=%d kills=%d deaths=%d dmg=%d) hooks(kills=%d deaths=%d) statsData(grabs=%d caps=%d shockShots=%d sniperShots=%d)%s"),
+		*PS->PlayerName, *PS->StatsID, (int32)PS->Score, PS->Kills, PS->Deaths, (int32)PS->DamageDone,
+		HookKills, HookDeaths,
+		(int32)PS->GetStatsValue(NAME_FlagGrabs), (int32)PS->GetStatsValue(NAME_FlagCaptures),
+		(int32)PS->GetStatsValue(NAME_ShockRifleShots), (int32)PS->GetStatsValue(NAME_SniperShots),
+		(HookKills > PS->Kills) ? TEXT("  <-- WARN hook kills > PS kills (PlayerState reset on reconnect?)") : TEXT(""));
+
 	OutData.bStatsSnapshotted = true;
 }
 
@@ -1132,6 +1177,14 @@ void AMutStatSQL::CollectEndOfMatchStats()
 		if (Data && !Data->bStatsSnapshotted)
 		{
 			SnapshotPlayerStats(PS, *Data);
+		}
+		else if (Data)
+		{
+			// [StatDrop] this player is still CONNECTED at match end but was already snapshotted at
+			// logout -> we submit the stale logout snapshot and lose everything they did since they
+			// rejoined (B1: the one-shot bStatsSnapshotted latch is never reset on rejoin).
+			UE_LOG(LogStatSQL, Warning, TEXT("[StatDrop] MATCH-END SKIP %s [%s] — stale snapshot (disconnected=%d score=%d kills=%d); post-rejoin score/acc/objectives lost"),
+				*PS->PlayerName, *PS->StatsID, Data->bDisconnected ? 1 : 0, Data->Score, Data->Kills);
 		}
 	}
 
