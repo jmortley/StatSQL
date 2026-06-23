@@ -1759,6 +1759,9 @@ void AMutStatSQL::SnapshotMatchEndState()
 					H.Damage          = static_cast<float>(FE.Damage);
 					H.TargetDistance  = FE.TargetDistance;
 					H.PaddedRadius    = FE.PaddedRadius;
+					H.Ping            = FE.Ping;
+					H.RewindDistance  = FE.RewindDistance;
+					H.TargetSpeed     = FE.TargetSpeed;
 					Snap.Hits.Add(H);
 				}
 
@@ -1840,6 +1843,9 @@ void AMutStatSQL::PostHitplotData()
 			Hit->SetNumberField(TEXT("dmg"), H.Damage);
 			Hit->SetNumberField(TEXT("dist"), H.TargetDistance);
 			Hit->SetNumberField(TEXT("prad"), H.PaddedRadius);
+			Hit->SetNumberField(TEXT("ping"), H.Ping);
+			Hit->SetNumberField(TEXT("rwd"), H.RewindDistance);
+			Hit->SetNumberField(TEXT("spd"), H.TargetSpeed);
 			HitsArray.Add(MakeShareable(new FJsonValueObject(Hit)));
 		}
 

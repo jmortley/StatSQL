@@ -152,6 +152,9 @@ protected:
 		float TargetDistance;
 		float PaddedRadius;
 		bool bHeadshot;
+		float Ping;               // attacker ExactPing (true ms) at hit time; -1 = no data
+		float RewindDistance;     // lag-comp rewind translation of the victim (UU); -1 = no data
+		float TargetSpeed;        // victim speed magnitude (UU/s) at hit time; -1 = no data
 	};
 
 	/** One snapshot per player who had recorded hits this match. */
