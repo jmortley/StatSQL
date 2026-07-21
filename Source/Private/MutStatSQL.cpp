@@ -2214,8 +2214,19 @@ void AMutStatSQL::Mutate_Implementation(const FString& MutateString, APlayerCont
 
 	if (!HasAuthority()) return;
 
+	// The console exec parser passes a MULTI-word command line to the last
+	// FString parameter as the raw remainder of the line — including the
+	// separator space after "mutate" — so "mutate setname Foo" arrives here
+	// as " setname Foo" and a bare StartsWith never matches. (Single-word
+	// commands take the normal token path and arrive clean, which is why
+	// "mutate warmup" worked while setname looked dead.) Trim first, exactly
+	// like ClutchOrderMutator does.
+	FString Command = MutateString;
+	Command.Trim();
+	Command.TrimTrailing();
+
 	// "mutate setname NewPlayerName"
-	if (MutateString.StartsWith(TEXT("setname ")))
+	if (Command.StartsWith(TEXT("setname ")))
 	{
 		if (!bAllowNameChange)
 		{
@@ -2226,7 +2237,7 @@ void AMutStatSQL::Mutate_Implementation(const FString& MutateString, APlayerCont
 			}
 			return;
 		}
-		FString NewName = MutateString.Mid(8).Trim();
+		FString NewName = Command.Mid(8).Trim();
 		HandleSetName(Sender, NewName);
 	}
 }
