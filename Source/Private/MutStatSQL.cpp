@@ -18,6 +18,45 @@
 #include "UTGameVolume.h"
 #include "UTCharacter.h"
 #include "UTRecastNavMesh.h"
+
+// Wipeout accumulates per-player healing on its GameMode (NetcodePlus's
+// AUWipeoutGame::HealingDoneThisMatch) rather than on the PlayerState, so there is
+// no stat to read here. StatSQL deliberately keeps NO build dependency on
+// NetcodePlus, so resolve it by name instead: any GameMode exposing a
+// UFUNCTION GetHealingDoneForPlayer(AUTPlayerState*) answers, and every other mode
+// reports 0. Mirrors the reflection already used for DamageDone.
+static int32 StatSQLGetHealingDoneForPlayer(AUTPlayerState* PS)
+{
+	if (PS == nullptr)
+	{
+		return 0;
+	}
+	UWorld* World = PS->GetWorld();
+	AGameModeBase* GM = (World != nullptr) ? World->GetAuthGameMode() : nullptr;
+	if (GM == nullptr)
+	{
+		return 0;
+	}
+
+	static const FName NAME_GetHealingDoneForPlayer(TEXT("GetHealingDoneForPlayer"));
+	UFunction* Func = GM->FindFunction(NAME_GetHealingDoneForPlayer);
+	// Guard the signature as well as the name: a same-named function with a
+	// different layout would corrupt the param block below.
+	if (Func == nullptr || Func->ParmsSize != sizeof(void*) + sizeof(int32))
+	{
+		return 0;
+	}
+
+	struct FHealingParams
+	{
+		AUTPlayerState* PS = nullptr;
+		int32 ReturnValue = 0;
+	};
+	FHealingParams Params;
+	Params.PS = PS;
+	GM->ProcessEvent(Func, &Params);
+	return Params.ReturnValue;
+}
 #include "ImageUtils.h"
 #include "StatNames.h"
 #include "UTATypes.h"
@@ -1121,6 +1160,12 @@ void AMutStatSQL::SnapshotPlayerStats(AUTPlayerState* PS, FPlayerMatchData& OutD
 	OutData.ItemStats.ArmorVestCount = (int32)PS->GetStatsValue(NAME_ArmorVestCount);
 	OutData.ItemStats.ArmorPadsCount = (int32)PS->GetStatsValue(NAME_ArmorPadsCount);
 	OutData.ItemStats.HelmetCount = (int32)PS->GetStatsValue(NAME_HelmetCount);
+	// Siphon rides the Berserk stat names (see SiphonPowerup.cpp). Harmlessly 0 in
+	// modes without the powerup, which is every mode except Wipeout today.
+	OutData.ItemStats.SiphonCount = (int32)PS->GetStatsValue(NAME_BerserkCount);
+	// Healing lives on the Wipeout GameMode rather than the PlayerState. Resolved
+	// through the interface below so StatSQL keeps no hard dependency on NetcodePlus.
+	OutData.ItemStats.HealingDone = StatSQLGetHealingDoneForPlayer(PS);
 	OutData.ItemStats.UDamageCount = (int32)PS->GetStatsValue(NAME_UDamageCount);
 	OutData.ItemStats.UDamageTime = (int32)PS->GetStatsValue(NAME_UDamageTime);
 

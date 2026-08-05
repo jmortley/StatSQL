@@ -46,6 +46,12 @@ struct FStatSQLItemData
 	int32 HelmetCount = 0;
 	int32 UDamageCount = 0;
 	int32 UDamageTime = 0;
+	/** Siphon powerup pickups (Wipeout). SiphonPowerup reuses the stock Berserk
+	 *  stat names to avoid an engine edit, so this reads NAME_BerserkCount. */
+	int32 SiphonCount = 0;
+	/** HP restored to teammates (Wipeout). Sourced from the GameMode's
+	 *  HealingDoneThisMatch, not a PlayerState stat. */
+	int32 HealingDone = 0;
 };
 
 // A single position sample along a flag carry route

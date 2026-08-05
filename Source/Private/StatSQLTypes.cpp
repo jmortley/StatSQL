@@ -99,6 +99,10 @@ TSharedRef<FJsonObject> BuildInsertItem(const FString& MatchId, const FPlayerMat
 	Json->SetNumberField(TEXT("belt"), Data.ItemStats.ShieldBeltCount);
 	Json->SetNumberField(TEXT("udmgcount"), Data.ItemStats.UDamageCount);
 	Json->SetNumberField(TEXT("udmgtime"), Data.ItemStats.UDamageTime);
+	// Additive fields — the Django side validates strictly, so these must be
+	// accepted there (model + validator) before a build sending them goes live.
+	Json->SetNumberField(TEXT("siphoncount"), Data.ItemStats.SiphonCount);
+	Json->SetNumberField(TEXT("healingdone"), Data.ItemStats.HealingDone);
 	return Json;
 }
 
