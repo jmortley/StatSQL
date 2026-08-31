@@ -132,41 +132,12 @@ protected:
 	// CRITICAL: do NOT read live world state from HTTP completion lambdas.
 	// On slow servers (low CPU, throttled network) the HTTP chain can take
 	// 10+ seconds. By the time a callback fires, the world is mid-teardown,
-	// UObjects are GC'd, FName chunks holding weapon names are recycled, and
-	// `FE.WeaponName.ToString()` crashes with FName chunk-index OOB
+	// UObjects are GC'd, FName chunks are recycled, and calls like
+	// `Mut->GetClass()->GetName()` crash with FName chunk-index OOB
 	// (UObject/NameTypes.h:354). Documented Oracle free-tier crash, May 2026.
 	//
 	// Fix: snapshot everything the HTTP chain reads at match-end, while the
 	// world is fully alive. After that, only POD/FString is touched.
-
-	/** Per-hit data captured at match-end from ServerShield's USSPlayerProfile.
-	 *  WeaponName is an FString (already FName→string converted) so it survives
-	 *  world teardown that recycles the FName chunks. */
-	struct FHitplotSnapshotHit
-	{
-		FString WeaponName;       // FName::ToString() result, captured at match-end
-		FVector CapsuleLocalHit;
-		float HitDotProduct;
-		float RadialOffset;
-		float Damage;
-		float TargetDistance;
-		float PaddedRadius;
-		bool bHeadshot;
-		float Ping;               // attacker ExactPing (true ms) at hit time; -1 = no data
-		float RewindDistance;     // lag-comp rewind translation of the victim (UU); -1 = no data
-		float TargetSpeed;        // victim speed magnitude (UU/s) at hit time; -1 = no data
-	};
-
-	/** One snapshot per player who had recorded hits this match. */
-	struct FHitplotSnapshotPlayer
-	{
-		FString PlayerUniqueId;
-		FString PlayerName;
-		TArray<FHitplotSnapshotHit> Hits;
-	};
-
-	/** Snapshot taken at match-end; consumed by PostHitplotData. */
-	TArray<FHitplotSnapshotPlayer> HitplotSnapshots;
 
 	/** Cached output of BuildGameOptions() — captured at match-end so the
 	 *  HTTP chain never walks the mutator linked list during world teardown
@@ -287,7 +258,6 @@ protected:
 	void PostDamageFeed();
 	void PostTimeline();
 	void PostUpdateMatch();
-	void PostHitplotData();
 
 	/** Map a UE4 damage type class name to the short string Django expects */
 	static FString MapDamageTypeToFeedName(const FString& ClassName);

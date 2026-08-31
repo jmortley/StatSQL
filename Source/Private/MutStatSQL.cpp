@@ -63,8 +63,6 @@ static int32 StatSQLGetHealingDoneForPlayer(AUTPlayerState* PS)
 #include "Http.h"
 #include "Json.h"
 #include "TimerManager.h"
-#include "MutServerShield.h"
-#include "SSPlayerProfile.h"
 
 DEFINE_LOG_CATEGORY(LogStatSQL);
 
@@ -865,7 +863,7 @@ void AMutStatSQL::NotifyMatchStateChange_Implementation(FName NewState)
 			// Snapshot all live-world state BEFORE kicking off the async HTTP chain.
 			// On slow servers (Oracle free-tier with 1 OCPU + throttled network) the
 			// chain takes 10+ seconds and runs through world teardown. Reading FNames,
-			// mutator chain, or ServerShield profiles from HTTP callbacks crashes
+			// mutator chain, or other live actor state from HTTP callbacks crashes
 			// with FName chunk-index OOB. See SnapshotMatchEndState() for details.
 			SnapshotMatchEndState();
 
@@ -1740,7 +1738,6 @@ void AMutStatSQL::PostUpdateMatch()
 		if (bOK)
 		{
 			UE_LOG(LogStatSQL, Log, TEXT("Match submission complete - MatchId: %s"), *Self->RemoteMatchId);
-			Self->PostHitplotData();
 		}
 		else
 		{
@@ -1757,9 +1754,8 @@ void AMutStatSQL::SnapshotMatchEndState()
 	// everything the HTTP chain will need so subsequent async callbacks never
 	// dereference live world state.
 	//
-	// See header comment on HitplotSnapshots for the crash this prevents.
+	// See the match-end snapshot comment in the header for the crash this prevents.
 
-	HitplotSnapshots.Empty();
 	CachedGameOptions.Empty();
 	CachedReplayId.Empty();
 	CachedRedScore = 0;
@@ -1767,68 +1763,15 @@ void AMutStatSQL::SnapshotMatchEndState()
 	CachedMapBounds = FBox(ForceInit);
 	bCachedMapBoundsValid = false;
 
-	// 1. Snapshot hitplot data from ServerShield (if present).
-	//    Converts FName WeaponName → FString immediately, while FName chunks
-	//    are still valid. After teardown, only the FString copies survive.
-	{
-		AMutServerShield* SS = nullptr;
-		for (TActorIterator<AMutServerShield> It(GetWorld()); It; ++It)
-		{
-			SS = *It;
-			break;
-		}
-
-		if (SS)
-		{
-			const TMap<FString, USSPlayerProfile*>& Profiles = SS->GetPlayerProfiles();
-			for (auto& Pair : Profiles)
-			{
-				USSPlayerProfile* Profile = Pair.Value;
-				if (!Profile) continue;
-
-				FHitplotSnapshotPlayer Snap;
-				Snap.PlayerUniqueId = Profile->UniqueId;
-				Snap.PlayerName = Profile->PlayerName;
-
-				for (const FFireEvent& FE : Profile->FireEvents)
-				{
-					if (!FE.bHit || !FE.bPrecisionWeapon) continue;
-					if (FE.CapsuleLocalHit.IsZero() && FE.HitDotProduct <= -2.0f) continue;
-
-					FHitplotSnapshotHit H;
-					H.WeaponName      = FE.WeaponName.ToString();   // ← FName→FString while world is alive
-					H.CapsuleLocalHit = FE.CapsuleLocalHit;
-					H.HitDotProduct   = FE.HitDotProduct;
-					H.RadialOffset    = FE.RadialOffset;
-					H.bHeadshot       = FE.bHeadshot;
-					H.Damage          = static_cast<float>(FE.Damage);
-					H.TargetDistance  = FE.TargetDistance;
-					H.PaddedRadius    = FE.PaddedRadius;
-					H.Ping            = FE.Ping;
-					H.RewindDistance  = FE.RewindDistance;
-					H.TargetSpeed     = FE.TargetSpeed;
-					Snap.Hits.Add(H);
-				}
-
-				if (Snap.Hits.Num() > 0)
-				{
-					HitplotSnapshots.Add(MoveTemp(Snap));
-				}
-			}
-		}
-		// If SS is null (ServerShield not installed), HitplotSnapshots stays
-		// empty and PostHitplotData becomes a no-op. Same end result, no crash.
-	}
-
-	// 2. Cache BuildGameOptions output. The original implementation walks
+	// 1. Cache BuildGameOptions output. The original implementation walks
 	//    GM->BaseMutator → Mut->NextMutator and reads Mut->GetClass()->GetName()
 	//    (FName::ToString) — second crash path if the chain is stale.
 	CachedGameOptions = BuildGameOptions();
 
-	// 3. Cache replay ID (FString from GameState->ReplayID).
+	// 2. Cache replay ID (FString from GameState->ReplayID).
 	CachedReplayId = GetReplayId();
 
-	// 4. Cache team scores.
+	// 3. Cache team scores.
 	if (AUTGameState* GS = GetWorld() ? GetWorld()->GetGameState<AUTGameState>() : nullptr)
 	{
 		for (AUTTeamInfo* Team : GS->Teams)
@@ -1839,91 +1782,14 @@ void AMutStatSQL::SnapshotMatchEndState()
 		}
 	}
 
-	// 5. Cache minimap world bounds (reads NavMesh from the world).
+	// 4. Cache minimap world bounds (reads NavMesh from the world).
 	bCachedMapBoundsValid = GetMinimapWorldBounds(CachedMapBounds);
 
 	UE_LOG(LogStatSQL, Log,
-		TEXT("Match-end snapshot: %d player(s) with hits, GameOptions=%d chars, MapBounds=%s, ReplayId=%s"),
-		HitplotSnapshots.Num(),
+		TEXT("Match-end snapshot: GameOptions=%d chars, MapBounds=%s, ReplayId=%s"),
 		CachedGameOptions.Len(),
 		bCachedMapBoundsValid ? TEXT("yes") : TEXT("no"),
 		CachedReplayId.IsEmpty() ? TEXT("(none)") : *CachedReplayId);
-}
-
-void AMutStatSQL::PostHitplotData()
-{
-	// Reads from the snapshot taken at match-end (SnapshotMatchEndState).
-	// No live-world reads here — safe to call from any HTTP callback regardless
-	// of world teardown state.
-
-	if (HitplotSnapshots.Num() == 0)
-	{
-		// No ServerShield, or no players had recorded precision-weapon hits.
-		// Either way, nothing to submit.
-		return;
-	}
-
-	int32 TotalHits = 0;
-	int32 PlayersWithHits = 0;
-	TWeakObjectPtr<AMutStatSQL> WeakThis(this);
-
-	for (const FHitplotSnapshotPlayer& Snap : HitplotSnapshots)
-	{
-		TSharedRef<FJsonObject> Root = MakeShareable(new FJsonObject());
-		Root->SetStringField(TEXT("action"), TEXT("insert_hitplot"));
-		Root->SetStringField(TEXT("matchid"), RemoteMatchId);
-		Root->SetStringField(TEXT("playerid"), Snap.PlayerUniqueId);
-
-		TArray<TSharedPtr<FJsonValue>> HitsArray;
-		for (const FHitplotSnapshotHit& H : Snap.Hits)
-		{
-			TSharedRef<FJsonObject> Hit = MakeShareable(new FJsonObject());
-			Hit->SetNumberField(TEXT("x"), H.CapsuleLocalHit.X);
-			Hit->SetNumberField(TEXT("y"), H.CapsuleLocalHit.Y);
-			Hit->SetNumberField(TEXT("z"), H.CapsuleLocalHit.Z);
-			Hit->SetNumberField(TEXT("dot"), H.HitDotProduct);
-			Hit->SetNumberField(TEXT("rad"), H.RadialOffset);
-			Hit->SetStringField(TEXT("wpn"), H.WeaponName);   // ← Already FString, no FName lookup
-			Hit->SetNumberField(TEXT("hs"), H.bHeadshot ? 1 : 0);
-			Hit->SetNumberField(TEXT("dmg"), H.Damage);
-			Hit->SetNumberField(TEXT("dist"), H.TargetDistance);
-			Hit->SetNumberField(TEXT("prad"), H.PaddedRadius);
-			Hit->SetNumberField(TEXT("ping"), H.Ping);
-			Hit->SetNumberField(TEXT("rwd"), H.RewindDistance);
-			Hit->SetNumberField(TEXT("spd"), H.TargetSpeed);
-			HitsArray.Add(MakeShareable(new FJsonValueObject(Hit)));
-		}
-
-		if (HitsArray.Num() == 0) continue;
-
-		Root->SetArrayField(TEXT("hits"), HitsArray);
-		TotalHits += HitsArray.Num();
-		PlayersWithHits++;
-
-		FString Body = StatSQLJson::Serialize(Root);
-		FString PlayerName = Snap.PlayerName;
-		int32 NumHits = HitsArray.Num();
-		SendPost(TEXT("/hitplot_entry/"), Body, [WeakThis, PlayerName, NumHits](bool bOK, const FString&)
-		{
-			// Bail if the mutator was destroyed during the round-trip — keeps logging
-			// safe even if the world has torn down.
-			AMutStatSQL* Self = WeakThis.Get();
-			if (!Self) return;
-			if (bOK)
-			{
-				UE_LOG(LogStatSQL, Log, TEXT("Hitplot submitted: %s (%d hits)"), *PlayerName, NumHits);
-			}
-			else
-			{
-				UE_LOG(LogStatSQL, Warning, TEXT("Hitplot submission failed for %s"), *PlayerName);
-			}
-		});
-	}
-
-	if (TotalHits > 0)
-	{
-		UE_LOG(LogStatSQL, Log, TEXT("Hitplot data: %d total hits across %d players"), TotalHits, PlayersWithHits);
-	}
 }
 
 // ============================================================
