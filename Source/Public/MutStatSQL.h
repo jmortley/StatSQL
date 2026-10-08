@@ -151,6 +151,7 @@ protected:
 	 *  in the PostUpdateMatch callback). */
 	int32 CachedRedScore;
 	int32 CachedBlueScore;
+	TMap<int32, int32> CachedTeamScores;
 
 	/** Cached minimap world bounds for the kill-heatmap overlay. */
 	FBox CachedMapBounds;

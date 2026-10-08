@@ -190,6 +190,11 @@ struct FPlayerMatchData
 
 namespace StatSQLJson
 {
+	// Unknown/no-team stays unlabelled instead of being misreported as Blue.
+	FString TeamName(int32 TeamIndex);
+	// Add all observed teams; absent final scores are JSON null, never guessed.
+	void AddTeamScores(const TSharedRef<FJsonObject>& Json,
+		const TMap<int32, int32>& Scores, const TMap<FString, FPlayerMatchData>& Players);
 	// Build JSON for insert_match
 	TSharedRef<FJsonObject> BuildInsertMatch(const FString& GameMode, const FString& MapName, const FString& ServerName);
 

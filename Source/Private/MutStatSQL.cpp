@@ -395,11 +395,11 @@ void AMutStatSQL::AddKillTimelineEvent(AController* Killer, AController* Other,
 	// Team names
 	if (KillerPS && KillerPS->Team)
 	{
-		Event.KillerTeam = (KillerPS->Team->TeamIndex == 0) ? TEXT("Red") : TEXT("Blue");
+		Event.KillerTeam = StatSQLJson::TeamName(KillerPS->Team->TeamIndex);
 	}
 	if (VictimPS && VictimPS->Team)
 	{
-		Event.KilledTeam = (VictimPS->Team->TeamIndex == 0) ? TEXT("Red") : TEXT("Blue");
+		Event.KilledTeam = StatSQLJson::TeamName(VictimPS->Team->TeamIndex);
 	}
 
 	// Victim stats
@@ -1015,7 +1015,7 @@ void AMutStatSQL::OnFlagHolderChanged(AUTCarriedObject* Flag)
 	NewCarry.Period = GetCurrentPeriod();
 	NewCarry.CarrierID = HolderID;
 	NewCarry.CarrierName = Holder->PlayerName;
-	NewCarry.Team = (Holder->Team && Holder->Team->TeamIndex == 0) ? TEXT("Red") : TEXT("Blue");
+	NewCarry.Team = StatSQLJson::TeamName(Holder->Team ? Holder->Team->TeamIndex : -1);
 
 	// Record grab location as first route point
 	FFlagRoutePoint GrabPoint;
@@ -1713,6 +1713,7 @@ void AMutStatSQL::PostUpdateMatch()
 	auto Json = StatSQLJson::BuildUpdateMatch(RemoteMatchId, RedKills, BlueKills,
 		CachedRedScore, CachedBlueScore, RedDeaths, BlueDeaths, RedDamage, BlueDamage,
 		CachedGameOptions, CachedReplayId);
+	StatSQLJson::AddTeamScores(Json, CachedTeamScores, PlayerData);
 
 	// Add map bounds for kill heatmap overlay on the website (cached at match-end)
 	if (bCachedMapBoundsValid)
@@ -1758,6 +1759,7 @@ void AMutStatSQL::SnapshotMatchEndState()
 
 	CachedGameOptions.Empty();
 	CachedReplayId.Empty();
+	CachedTeamScores.Empty();
 	CachedRedScore = 0;
 	CachedBlueScore = 0;
 	CachedMapBounds = FBox(ForceInit);
@@ -1777,6 +1779,7 @@ void AMutStatSQL::SnapshotMatchEndState()
 		for (AUTTeamInfo* Team : GS->Teams)
 		{
 			if (!Team) continue;
+			if (Team->TeamIndex < 255) CachedTeamScores.Add(Team->TeamIndex, Team->Score);
 			if (Team->TeamIndex == 0) CachedRedScore = Team->Score;
 			else if (Team->TeamIndex == 1) CachedBlueScore = Team->Score;
 		}

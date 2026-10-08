@@ -8,6 +8,64 @@
 namespace StatSQLJson
 {
 
+FString TeamName(int32 TeamIndex)
+{
+	switch (TeamIndex)
+	{
+	case 0: return TEXT("Red");
+	case 1: return TEXT("Blue");
+	case 2: return TEXT("Green");
+	case 3: return TEXT("Yellow");
+	default: return TEXT("");
+	}
+}
+
+void AddTeamScores(const TSharedRef<FJsonObject>& Json,
+	const TMap<int32, int32>& Scores, const TMap<FString, FPlayerMatchData>& Players)
+{
+	TArray<int32> Indices;
+	Scores.GetKeys(Indices);
+	for (const auto& Pair : Players)
+	{
+		const int32 Index = Pair.Value.TeamIndex;
+		if (Index >= 0 && Index < 255) Indices.AddUnique(Index);
+	}
+	Indices.Sort();
+	TArray<TSharedPtr<FJsonValue>> Teams;
+	for (int32 Index : Indices)
+	{
+		if (Index < 0 || Index >= 255) continue;
+		TSharedRef<FJsonObject> Team = MakeShareable(new FJsonObject());
+		Team->SetNumberField(TEXT("id"), Index);
+		Team->SetStringField(TEXT("name"), TeamName(Index));
+		const int32* Score = Scores.Find(Index);
+		if (Score) Team->SetNumberField(TEXT("score"), *Score);
+		else Team->SetField(TEXT("score"), MakeShareable(new FJsonValueNull()));
+		int32 Kills = 0, Deaths = 0;
+		double Damage = 0;
+		for (const auto& Pair : Players)
+		{
+			const FPlayerMatchData& Player = Pair.Value;
+			if (Player.TeamIndex != Index) continue;
+			Kills += Player.Kills;
+			Deaths += Player.Deaths;
+			Damage += Player.DamageDone;
+		}
+		Team->SetNumberField(TEXT("kills"), Kills);
+		Team->SetNumberField(TEXT("deaths"), Deaths);
+		Team->SetNumberField(TEXT("damage"), Damage);
+		Teams.Add(MakeShareable(new FJsonValueObject(Team)));
+	}
+	Json->SetArrayField(TEXT("team_scores"), Teams);
+	// Keep the legacy fields for older receivers, including their nullable schema.
+	const int32* Red = Scores.Find(0);
+	const int32* Blue = Scores.Find(1);
+	if (Red) Json->SetNumberField(TEXT("redscore"), *Red);
+	else Json->SetField(TEXT("redscore"), MakeShareable(new FJsonValueNull()));
+	if (Blue) Json->SetNumberField(TEXT("bluescore"), *Blue);
+	else Json->SetField(TEXT("bluescore"), MakeShareable(new FJsonValueNull()));
+}
+
 FString Serialize(const TSharedRef<FJsonObject>& JsonObj)
 {
 	FString Output;
@@ -71,7 +129,8 @@ TSharedRef<FJsonObject> BuildInsertMatchStats(const FString& MatchId, const FPla
 	Json->SetNumberField(TEXT("kills"), Data.Kills);
 	Json->SetNumberField(TEXT("deaths"), Data.Deaths);
 	Json->SetNumberField(TEXT("ping"), Data.Ping);
-	Json->SetStringField(TEXT("team"), Data.TeamIndex == 0 ? TEXT("Red") : TEXT("Blue"));
+	Json->SetStringField(TEXT("team"), TeamName(Data.TeamIndex));
+	Json->SetNumberField(TEXT("team_index"), Data.TeamIndex);
 	Json->SetNumberField(TEXT("damage"), Data.DamageDone);
 	Json->SetNumberField(TEXT("multi0"), Data.MultiKills[0]);
 	Json->SetNumberField(TEXT("multi1"), Data.MultiKills[1]);
