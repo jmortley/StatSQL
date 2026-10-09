@@ -5,6 +5,11 @@
 #include "Serialization/JsonWriter.h"
 #include "Serialization/JsonSerializer.h"
 
+int32 StatSQLSnapshot::PlayerScore(bool bIsFlagRun, float RecordedScore, int32 Kills, int32 KillAssists)
+{
+	return bIsFlagRun ? Kills + KillAssists : int32(RecordedScore);
+}
+
 namespace StatSQLJson
 {
 

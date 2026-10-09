@@ -6,6 +6,13 @@
 #include "CoreMinimal.h"
 #include "Dom/JsonObject.h"
 
+namespace StatSQLSnapshot
+{
+	// FlagRun finalizes Score after the WaitingPostMatch mutator callback.
+	// Use the same lifetime kills + kill assists total even before highlights run.
+	int32 PlayerScore(bool bIsFlagRun, float RecordedScore, int32 Kills, int32 KillAssists);
+}
+
 // Per-weapon kill/death tracking
 struct FStatSQLWeaponData
 {

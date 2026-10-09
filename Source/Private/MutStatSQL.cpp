@@ -7,6 +7,7 @@
 #include "UTGameMode.h"
 #include "UTGameState.h"
 #include "UTCTFGameState.h"
+#include "UTFlagRunGameState.h"
 #include "UTPlayerState.h"
 #include "UTPlayerController.h"
 #include "UTCarriedObject.h"
@@ -1048,8 +1049,19 @@ void AMutStatSQL::SnapshotPlayerStats(AUTPlayerState* PS, FPlayerMatchData& OutD
 	const int32 HookKills = OutData.Kills;
 	const int32 HookDeaths = OutData.Deaths;
 
-	// Basic stats from properties
-	OutData.Score = PS->Score;
+	// AUTGameMode::EndMatch calls Super::EndMatch (and our WaitingPostMatch
+	// callback) BEFORE UpdateMatchHighlights. FlagRun sets the final Score to
+	// Kills + KillAssists in those highlights, so PS->Score is still stale here.
+	// Calculate that same total directly, including for a logout snapshot;
+	// do not delay the upload or mutate the live PlayerState to finalize it.
+	const bool bIsFlagRun = GetWorld()->GetGameState<AUTFlagRunGameState>() != nullptr;
+	OutData.Score = StatSQLSnapshot::PlayerScore(bIsFlagRun, PS->Score, PS->Kills, PS->KillAssists);
+	if (bIsFlagRun)
+	{
+		UE_LOG(LogStatSQL, Log, TEXT("Blitz score snapshot %s: recorded=%d kills=%d kill_assists=%d uploaded=%d"),
+			*PS->PlayerName, int32(PS->Score), PS->Kills, PS->KillAssists, OutData.Score);
+	}
+	// Other basic stats from properties
 	OutData.Kills = PS->Kills;
 	OutData.Deaths = PS->Deaths;
 	OutData.Ping = PS->ExactPing;
